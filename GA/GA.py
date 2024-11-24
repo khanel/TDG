@@ -1,5 +1,4 @@
 from random import random
-from ypstruct import structure
 import numpy as np
 
 class GeneticAlgorithm:
