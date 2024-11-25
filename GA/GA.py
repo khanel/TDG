@@ -19,8 +19,11 @@ class GeneticAlgorithm:
             # Selection
             parents = self.genetic_operator.select(population)
 
-            # Crossover
-            offspring = [self.genetic_operator.crossover(parents[0], parents[1]) for _ in range(self.population_size // 2)]
+            # Crossover and flatten the offspring list
+            offspring = []
+            for _ in range(self.population_size // 2):
+                children = self.genetic_operator.crossover(parents[0], parents[1])
+                offspring.extend(children)
 
             # Mutation
             offspring = [self.genetic_operator.mutate(individual) for individual in offspring]
@@ -29,13 +32,19 @@ class GeneticAlgorithm:
             population = self._replace_least_fit(population, offspring)
 
             # Update best solution
-            current_best = min(population, key=lambda x: self.problem.calculate_fitness(x))
-            current_best_fitness = self.problem.calculate_fitness(current_best)
+            current_best = min(population, key=lambda x: x.fitness if x.fitness is not None else float('inf'))
+            if current_best.fitness is None:
+                current_best.evaluate()
+            current_best_fitness = current_best.fitness
 
             # Check if current best is better than overall best
             if current_best_fitness < best_fitness:
                 best_solution = current_best
                 best_fitness = current_best_fitness
+
+            # Log statistics if available
+            if hasattr(self.problem, 'log_statistics'):
+                self.problem.log_statistics(population, iteration)
 
             # Verbosity handling
             if self.verbosity >= 1:
@@ -44,8 +53,15 @@ class GeneticAlgorithm:
         return best_solution, best_fitness
 
     def _replace_least_fit(self, population, offspring):
-        for individual in offspring:
-            least_fit_index = min(enumerate(population), key=lambda x: self.problem.calculate_fitness(x[1]))[0]
-            if self.problem.calculate_fitness(individual) < self.problem.calculate_fitness(population[least_fit_index]):
-                population[least_fit_index] = individual
-        return population
+        # Ensure all individuals have fitness calculated
+        for ind in population + offspring:
+            if ind.fitness is None:
+                ind.evaluate()
+        
+        # Sort population by fitness
+        population = sorted(population, key=lambda x: x.fitness)
+        offspring = sorted(offspring, key=lambda x: x.fitness)
+        
+        # Keep the best individuals from both population and offspring
+        new_population = population[:self.population_size - len(offspring)] + offspring
+        return new_population

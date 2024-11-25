@@ -1,76 +1,15 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import time
+# Built-in Python packages
 import sys
 from pathlib import Path
 
-# Add parent directory to Python path to allow imports from GA module
+# Third-party packages
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Local project modules
 sys.path.append(str(Path(__file__).parent.parent))
-from GA.GA import GeneticAlgorithm
-from GA.Problem import ProblemInterface, Solution, GeneticOperator
+from GA.Problem import ProblemInterface, Solution
 
-class TSPGeneticOperator(GeneticOperator):
-    def __init__(self, selection_prob=0.8, mutation_prob=0.1):
-        self.selection_prob = selection_prob
-        self.mutation_prob = mutation_prob
-    
-    def select(self, population):
-        # Tournament selection
-        tournament_size = 3
-        selected = []
-        for _ in range(2):
-            tournament = np.random.choice(population, size=tournament_size, replace=False)
-            winner = min(tournament, key=lambda x: x.problem.calculate_fitness(x.representation))
-            selected.append(winner)
-        return selected
-
-    def crossover(self, parent1, parent2):
-        if np.random.random() > self.selection_prob:
-            return parent1, parent2
-
-        # Order Crossover (OX) maintaining city 1 as start
-        n = len(parent1.representation)
-        # Choose section after city 1
-        start = 1 + np.random.randint(0, n-2)
-        end = 1 + np.random.randint(start, n-1)
-        
-        def create_child(p1, p2):
-            # Keep city 1 as start, apply OX to rest of route
-            child = [1] + [-1] * (n-1)  # Initialize with -1s after city 1
-            # Copy section from parent1
-            child[start:end+1] = p1.representation[start:end+1]
-            # Fill remaining positions with cities from parent2 in order
-            remaining = [x for x in p2.representation if x not in child[start:end+1] and x != 1]
-            # Fill positions after end
-            for i in range(end+1, n):
-                child[i] = remaining.pop(0)
-            # Fill positions between city 1 and start
-            for i in range(1, start):
-                child[i] = remaining.pop(0)
-            return child
-
-        child1 = create_child(parent1, parent2)
-        child2 = create_child(parent2, parent1)
-        
-        return Solution(child1, parent1.problem), Solution(child2, parent1.problem)
-
-    def mutate(self, individual):
-        if np.random.random() > self.mutation_prob:
-            return individual
-        
-        # Swap Mutation (avoiding city 1)
-        n = len(individual.representation)
-        # Choose two random positions after city 1
-        pos1, pos2 = np.random.choice(range(1, n), size=2, replace=False)
-        
-        # Create new representation with the swap
-        new_repr = individual.representation.copy()
-        new_repr[pos1], new_repr[pos2] = new_repr[pos2], new_repr[pos1]
-        
-        return Solution(new_repr, individual.problem)
-
-
-# TSP Problem Class
 class TSPProblem(ProblemInterface):
     def __init__(self, graph, city_coords):
         self.cities_graph = graph
@@ -136,8 +75,6 @@ class TSPProblem(ProblemInterface):
         # Update the plot
         self.live_fig.canvas.draw()
         self.live_fig.canvas.flush_events()
-        
-        # Small delay to make the visualization visible
         plt.pause(0.01)
     
     def log_statistics(self, population, generation):
@@ -187,6 +124,9 @@ class TSPProblem(ProblemInterface):
         return population
 
     def calculate_fitness(self, individual_representation):
+        # If we received a Solution object, use its representation
+        if isinstance(individual_representation, Solution):
+            individual_representation = individual_representation.representation
         return self.calculate_path_distance(individual_representation)
 
     def validate_individual(self, individual):
@@ -197,6 +137,9 @@ class TSPProblem(ProblemInterface):
         return len(self.cities_graph.get_vertices())
 
     def calculate_path_distance(self, path):
+        # If we received a Solution object, use its representation
+        if isinstance(path, Solution):
+            path = path.representation
         distance = 0
         path_for_distance = path + [path[0]]  # Always close the loop
         for i in range(len(path_for_distance) - 1):
@@ -270,15 +213,28 @@ class TSPProblem(ProblemInterface):
         self.path = new_path
 
 
-# Graph Class for TSP cities representation
 class Graph:
     def __init__(self, weights):
+        """Initialize a graph with a distance matrix.
+        
+        Args:
+            weights (numpy.ndarray): Square matrix of distances between cities
+        """
         self.weights = weights
         self.vertices = [i + 1 for i in range(len(weights))]
         self.edges = []
         self.calculate_edges(weights)
 
     def calculate_edges(self, weights, first_index=0):
+        """Calculate edges and their weights from the distance matrix.
+        
+        Args:
+            weights (numpy.ndarray): Distance matrix
+            first_index (int): Starting index for edge calculation
+        
+        Returns:
+            list: List of tuples (city1, city2, distance)
+        """
         for i in range(first_index, len(self.vertices)):
             for j in range(len(self.vertices)):
                 if i != j and weights[i][j] != 0:
@@ -286,6 +242,14 @@ class Graph:
         return self.edges
 
     def add_edge(self, weight):
+        """Add a new city with its distances to existing cities.
+        
+        Args:
+            weight (list): Distances from the new city to all existing cities
+        
+        Returns:
+            list: Updated list of edges
+        """
         self.vertices.append(len(self.vertices) + 1)
         for i, j in enumerate(weight):
             if weight[i] != 0:
@@ -294,122 +258,17 @@ class Graph:
         return self.edges
 
     def get_weights(self):
+        """Get the distance matrix.
+        
+        Returns:
+            numpy.ndarray: Matrix of distances between cities
+        """
         return self.weights
 
     def get_vertices(self):
+        """Get the list of cities.
+        
+        Returns:
+            list: List of city indices (1-based)
+        """
         return self.vertices
-
-
-# Genetic Algorithm Class
-class GeneticAlgorithm:
-    def __init__(self, problem_interface, genetic_operator,
-                 population_size, max_iterations, desired_fitness, verbosity=0):
-        self.problem = problem_interface
-        self.genetic_operator = genetic_operator
-        self.population_size = population_size
-        self.max_iterations = max_iterations
-        self.desired_fitness = desired_fitness
-        self.verbosity = verbosity
-
-    def run(self):
-        population = self.problem.generate_initial_population(self.population_size)
-
-        for generation in range(self.max_iterations):
-            # Selection
-            parents = self.genetic_operator.select(population)
-
-            # Crossover
-            offspring = []
-            for _ in range(self.population_size // 2):
-                child1, child2 = self.genetic_operator.crossover(parents[0], parents[1])
-                offspring.append(child1)
-                offspring.append(child2)
-                parents = self.genetic_operator.select(population)
-
-            # Mutation
-            offspring = [self.genetic_operator.mutate(individual) for individual in offspring]
-
-            # Replacement
-            population = self._replace_least_fit(population, offspring)
-
-            self.problem.log_statistics(population, generation)
-
-        # Return the best solution (minimum distance for TSP)
-        best_solution = min(population, key=lambda x: x.fitness)
-        return best_solution, best_solution.fitness
-
-    def _replace_least_fit(self, population, offspring):
-        for individual in offspring:
-            individual.evaluate()
-            # Find the worst individual (highest distance) to replace
-            worst_fit_index = max(enumerate(population), key=lambda x: x[1].fitness)[0]
-            if individual.fitness < population[worst_fit_index].fitness:
-                population[worst_fit_index] = individual
-        return population
-
-
-# Example Usage
-if __name__ == "__main__":
-    # Create cities in a circle for a known optimal solution
-    num_cities = 20
-    radius = 1.0
-    
-    # Generate city coordinates on a circle
-    angles = np.linspace(0, 2*np.pi, num_cities, endpoint=False)
-    city_coords = [(radius * np.cos(angle), radius * np.sin(angle)) for angle in angles]
-    
-    # Calculate distances between cities
-    weights = np.zeros((num_cities, num_cities))
-    for i in range(num_cities):
-        for j in range(num_cities):
-            if i != j:
-                x1, y1 = city_coords[i]
-                x2, y2 = city_coords[j]
-                weights[i][j] = np.sqrt((x2-x1)**2 + (y2-y1)**2) * 100  # Scale distances for better readability
-    
-    # The optimal solution is to visit cities in order around the circle
-    optimal_route = list(range(1, num_cities + 1))  # Cities numbered from 1 to num_cities
-    optimal_distance = sum(weights[i-1][i % num_cities] for i in range(num_cities))  # Include return to start
-    
-    print("City Coordinates:")
-    for i, (x, y) in enumerate(city_coords, 1):
-        print(f"City {i}: ({x:.2f}, {y:.2f})")
-    
-    print("\nOptimal Solution:")
-    print(f"Route: {' -> '.join(map(str, optimal_route + [optimal_route[0]]))}") # Show return to start
-    print(f"Distance: {optimal_distance:.2f}")
-    
-    print("\nStarting Genetic Algorithm optimization...")
-    
-    graph = Graph(weights)
-    problem = TSPProblem(graph, city_coords)
-    
-    # GA parameters
-    population_size = 100  # Increased population size for more diversity
-    max_iterations = 800   # Increased iterations for better convergence
-    desired_fitness = 0    # We'll run for all iterations
-    genetic_operator = TSPGeneticOperator(selection_prob=0.8, mutation_prob=0.1)
-    
-    # Create and run GA
-    start_time = time.time()
-    ga = GeneticAlgorithm(
-        problem_interface=problem,
-        genetic_operator=genetic_operator,
-        population_size=population_size,
-        max_iterations=max_iterations,
-        desired_fitness=desired_fitness,
-        verbosity=0  # Reduce default verbosity since we have custom logging
-    )
-    
-    best_solution, best_fitness = ga.run()
-    end_time = time.time()
-    
-    # Print results
-    print("\nFinal Results:")
-    print(f"Best Route: {' -> '.join(map(str, best_solution.representation))} -> {best_solution.representation[0]}")
-    print(f"Total Distance: {best_fitness:.2f}")
-    print(f"Time taken: {end_time - start_time:.2f} seconds")
-    
-    # Visualize results
-    problem.plot_progress()
-    problem.plot_route(best_solution)
