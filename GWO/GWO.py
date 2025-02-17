@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+import numpy as np
 """
 Generic Gray Wolf Optimization (GWO) Module.
 
@@ -29,12 +29,29 @@ class BaseGWO(abc.ABC):
 
 class GrayWolfOptimization(BaseGWO):
     def initialize_population(self):
-        # Implementation for population initialization
-        # For now, simply call a method on the problem to set initial state
+        # Implementation for population initialization using a generic algorithm.
+        # If the problem object defines an 'initialize' method, invoke it.
+        # Otherwise, attempt to create a population using the following attributes:
+        #   - population_size: number of wolves in the population
+        #   - dim: dimensionality of each wolf's solution
+        #   - lower_bound: lower bound(s) of the search space
+        #   - upper_bound: upper bound(s) of the search space
         if hasattr(self.problem, "initialize"):
             self.problem.initialize()
         else:
-            print("Population initialized (default implementation).")
+            try:
+                pop_size = self.problem.population_size
+                dim = self.problem.dim
+                lb = self.problem.lower_bound
+                ub = self.problem.upper_bound
+            except AttributeError:
+                print("Population initialization attributes missing. Using default implementation.")
+                return
+            # Ensure lower_bound and upper_bound are numpy arrays for proper vectorized operations.
+            lb = np.array(lb)
+            ub = np.array(ub)
+            self.problem.population = np.random.uniform(lb, ub, (pop_size, dim))
+            print(f"Population initialized with shape: {self.problem.population.shape}")
 
     def update_positions(self):
         # Implementation for updating positions of wolves
