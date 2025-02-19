@@ -103,4 +103,37 @@ class GrayWolfOptimization(BaseGWO):
     def optimize(self, max_iter=100):
         """
         Execute the optimization process."""
-        pass
+        self.initialize_population()
+        try:
+            population = self.problem.population
+        except AttributeError:
+            print("Population not initialized. Cannot proceed with optimization.")
+            return None
+
+        # Get the dimensionality of the problem
+        dim = population.shape[1]
+
+        for iter_num in range(max_iter):
+            # Evaluate fitness of each wolf
+            fitness = np.array([self.problem.fitness_function(wolf) for wolf in population])
+
+            # Find alpha, beta, and delta wolves
+            alpha_idx, beta_idx, delta_idx = np.argsort(fitness)[:3]
+            alpha_pos = population[alpha_idx]
+            beta_pos = population[beta_idx]
+            delta_pos = population[delta_idx]
+
+            # Linearly decrease 'a' from 2 to 0
+            a = 2 - iter_num * (2 / max_iter)
+
+            # Update positions of all wolves
+            self.update_positions(alpha_pos, beta_pos, delta_pos, a)
+
+            # Optionally, log the progress or check for convergence here
+            print(f"Iteration {iter_num+1}/{max_iter} completed.")
+
+        if hasattr(self.problem, "get_best_solution"):
+            return self.problem.get_best_solution()
+        else:
+            print("Optimization complete (default implementation).")
+            return alpha_pos # Returning alpha position as the best solution
