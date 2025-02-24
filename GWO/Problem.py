@@ -40,7 +40,13 @@ class GWO_TSPProblem(BaseProblem):
     def calculate_path_distance(self, path):
         # Implementation for calculating path distance
         distance = 0
-        path_for_distance = path + [path[0]]  # Always close the loop
+        # Convert path to numpy array if it isn't already
+        path = np.array(path)
+        # Close the loop by adding first city to end
+        path_for_distance = np.append(path, path[0])
         for i in range(len(path_for_distance) - 1):
-            distance += self.cities_graph.get_weights()[path_for_distance[i] - 1][path_for_distance[i + 1] - 1]
+            # Convert 1-based indices to 0-based for array access
+            city1 = path_for_distance[i] - 1
+            city2 = path_for_distance[i + 1] - 1
+            distance += self.cities_graph.get_weights()[city1][city2]
         return distance
