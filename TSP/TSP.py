@@ -6,211 +6,94 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
+from typing import Any, Dict, List
+
 # Local project modules
-sys.path.append(str(Path(__file__).parent.parent))
-from GA.Problem import ProblemInterface, Solution
+# Ensure Core is in the Python path or adjust relative imports if needed
+# Assuming Core is a top-level directory alongside TSP
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent)) # Go up two levels from TSP/TSP.py to project root
+from Core.problem import ProblemInterface, Solution
 
 class TSPProblem(ProblemInterface):
-    def __init__(self, graph, city_coords):
+    """
+    Represents the Traveling Salesperson Problem (TSP).
+    Conforms to the ProblemInterface for use with various search algorithms.
+    """
+    def __init__(self, graph: 'Graph', city_coords: List[tuple[float, float]]):
+        """
+        Initializes the TSP problem instance.
+
+        Args:
+            graph: A Graph object containing the distance matrix (weights).
+            city_coords: A list of (x, y) coordinates for each city.
+        """
         self.cities_graph = graph
         self.city_coords = city_coords
-        self.path = []
-        self.best_fitness_history = []
-        self.avg_fitness_history = []
-        self.improvement_count = 0
-        self.last_best_fitness = float('inf')
-        self.generations_without_improvement = 0
-        self.live_fig = None
-        self.live_ax = None
-        
-    def setup_live_plot(self):
-        plt.ion()  # Turn on interactive mode
-        self.live_fig, self.live_ax = plt.subplots(figsize=(10, 10))
-        self.live_ax.grid(True)
-        self.live_ax.set_title('TSP Route (Live)')
-        plt.show()
-    
-    def update_live_plot(self, solution, generation):
-        if self.live_ax is None:
-            self.setup_live_plot()
-            
-        self.live_ax.clear()
-        
-        # Plot cities
-        for i, (x, y) in enumerate(self.city_coords, 1):
-            self.live_ax.plot(x, y, 'ro', markersize=10)
-            self.live_ax.annotate(f'{i}', (x, y), xytext=(5, 5), textcoords='offset points')
-        
-        # Plot path with arrows
-        path = solution.representation
-        n = len(path)
-        for i in range(len(path)):
-            city1 = path[i]
-            city2 = path[(i + 1) % n]
-            x1, y1 = self.city_coords[city1-1]
-            x2, y2 = self.city_coords[city2-1]
-            
-            # Calculate arrow properties
-            dx = x2 - x1
-            dy = y2 - y1
-            
-            # Draw arrow
-            self.live_ax.arrow(x1, y1, dx, dy,
-                             head_width=0.05,
-                             head_length=0.08,
-                             fc='b',
-                             ec='b',
-                             alpha=0.6,
-                             length_includes_head=True)
-        
-        # Plot starting city
-        start_x, start_y = self.city_coords[path[0]-1]
-        self.live_ax.plot(start_x, start_y, 'go', markersize=15, alpha=0.5, label='Start')
-        
-        self.live_ax.set_title(f'Generation {generation}\nCurrent Distance: {solution.fitness:.2f}')
-        self.live_ax.axis('equal')
-        self.live_ax.grid(True)
-        self.live_ax.legend()
-        
-        # Update the plot
-        self.live_fig.canvas.draw()
-        self.live_fig.canvas.flush_events()
-        plt.pause(0.01)
-    
-    def log_statistics(self, population, generation):
-        # Ensure all individuals have fitness calculated
-        for ind in population:
-            if ind.fitness is None:
-                ind.evaluate()
-        fitnesses = [ind.fitness for ind in population]
-        current_best = min(fitnesses)
-        current_avg = np.mean(fitnesses)
-        
-        self.best_fitness_history.append(current_best)
-        self.avg_fitness_history.append(current_avg)
-        
-        # Get the best solution in current population
-        best_solution = min(population, key=lambda x: x.fitness)
-        
-        # Update live plot
-        self.update_live_plot(best_solution, generation)
-        
-        # Track improvements
-        if current_best < self.last_best_fitness:
-            improvement = self.last_best_fitness - current_best
-            self.improvement_count += 1
-            print(f"\nGeneration {generation}: New best distance: {current_best:.2f} "
-                  f"(Improved by: {improvement:.2f}, "
-                  f"Total improvements: {self.improvement_count})")
-            self.last_best_fitness = current_best
-            self.generations_without_improvement = 0
-        else:
-            self.generations_without_improvement += 1
-            if self.generations_without_improvement % 20 == 0:
-                print(f"\nNo improvement for {self.generations_without_improvement} generations. "
-                      f"Current best: {current_best:.2f}")
 
-    def generate_initial_population(self, size):
-        population = []
+    def evaluate(self, solution: Solution) -> float:
+        """
+        Calculates the total distance of the tour represented by the solution.
+        Lower distance is better fitness.
+
+        Args:
+            solution: The Solution object containing the tour (list of city indices).
+
+        Returns:
+            The total distance (fitness) of the tour.
+        """
+        return self.calculate_path_distance(solution.representation)
+
+    def get_initial_solution(self) -> Solution:
+        """
+        Generates a single random initial solution (tour).
+        The tour always starts at city 1 and visits other cities in a random order.
+
+        Returns:
+            A Solution object representing the initial tour.
+        """
         vertices = self.cities_graph.get_vertices()
-        for _ in range(size):
-            # Always start with city 1, shuffle the rest
-            remaining_cities = vertices[1:]  # All cities except city 1
-            np.random.shuffle(remaining_cities)
-            individual = [1] + remaining_cities  # City 1 is always first
-            solution = Solution(individual, self)
-            solution.evaluate()
-            population.append(solution)
-        return population
+        # Always start with city 1, shuffle the rest
+        remaining_cities = vertices[1:]  # All cities except city 1
+        np.random.shuffle(remaining_cities)
+        initial_tour = [1] + remaining_cities  # City 1 is always first
+        solution = Solution(representation=initial_tour, problem=self)
+        return solution
 
-    def calculate_fitness(self, individual_representation):
-        # If we received a Solution object, use its representation
-        if isinstance(individual_representation, Solution):
-            individual_representation = individual_representation.representation
-        return self.calculate_path_distance(individual_representation)
+    def get_problem_info(self) -> Dict[str, Any]:
+        """
+        Provides essential information about the TSP instance.
 
-    def validate_individual(self, individual):
-        return len(individual.representation) == len(self.cities_graph.get_vertices()) and len(
-            set(individual.representation)) == len(individual.representation)
+        Returns:
+            A dictionary containing the number of cities (dimension),
+            problem type ('discrete'), and city coordinates.
+        """
+        return {
+            'dimension': len(self.city_coords),
+            'problem_type': 'discrete',
+            'cities': self.city_coords # Provide coordinates for potential visualization
+        }
 
-    def get_individual_size(self):
-        return len(self.cities_graph.get_vertices())
+    def calculate_path_distance(self, path_representation: List[int]) -> float:
+        """
+        Calculates the total distance of a given path (tour).
+        Assumes the path is a list of city indices (1-based).
+        The path implicitly returns to the start city to form a closed loop.
 
-    def calculate_path_distance(self, path):
-        # If we received a Solution object, use its representation
-        if isinstance(path, Solution):
-            path = path.representation
-        distance = 0
-        path_for_distance = path + [path[0]]  # Always close the loop
-        for i in range(len(path_for_distance) - 1):
-            distance += self.cities_graph.get_weights()[path_for_distance[i] - 1][path_for_distance[i + 1] - 1]
+        Args:
+            path_representation: A list of city indices representing the tour.
+
+        Returns:
+            The total distance of the tour.
+        """
+        distance = 0.0
+        # Add the starting city to the end to close the loop for distance calculation
+        path_for_distance = path_representation + [path_representation[0]]
+        weights = self.cities_graph.get_weights()
+        for i in range(len(path_representation)): # Iterate N times for N edges
+            city1_idx = path_for_distance[i] - 1 # Convert 1-based city ID to 0-based index
+            city2_idx = path_for_distance[i + 1] - 1
+            distance += weights[city1_idx][city2_idx]
         return distance
-
-    def plot_progress(self):
-        plt.figure(figsize=(15, 5))
-        
-        # Plot 1: Distance History
-        plt.subplot(1, 2, 1)
-        plt.plot(self.best_fitness_history, 'b-', label='Best Distance', linewidth=2)
-        plt.plot(self.avg_fitness_history, 'r--', label='Average Distance', alpha=0.5)
-        plt.xlabel('Generation')
-        plt.ylabel('Total Distance')
-        plt.title('Distance Optimization Progress')
-        plt.legend()
-        plt.grid(True)
-        
-        # Plot 2: Improvement Distribution
-        plt.subplot(1, 2, 2)
-        # Calculate improvements (negative since we're minimizing)
-        improvements = np.array(self.best_fitness_history[:-1]) - np.array(self.best_fitness_history[1:])
-        if len(improvements) > 0:
-            plt.hist(improvements[improvements > 0], bins=min(20, len(improvements)), 
-                    color='green', alpha=0.6)
-            plt.xlabel('Distance Reduction')
-            plt.ylabel('Frequency')
-            plt.title('Distribution of Distance Improvements')
-        plt.grid(True)
-        
-        plt.tight_layout()
-        plt.show()
-
-    def plot_route(self, solution):
-        if solution.fitness is None:
-            solution.evaluate()
-        
-        path = solution.representation
-        n = len(path)
-        
-        plt.figure(figsize=(10, 10))
-        
-        # Plot cities using actual coordinates
-        for i, (x, y) in enumerate(self.city_coords, 1):
-            plt.plot(x, y, 'ro', markersize=10)
-            plt.annotate(f'City {i}', (x, y), xytext=(5, 5), textcoords='offset points')
-        
-        # Plot path
-        for i in range(len(path)):
-            city1 = path[i]
-            city2 = path[(i + 1) % n]
-            x1, y1 = self.city_coords[city1-1]  # -1 because cities are numbered from 1
-            x2, y2 = self.city_coords[city2-1]
-            plt.plot([x1, x2], [y1, y2], 'b-', alpha=0.6)
-        
-        # Plot starting city with different color/style
-        start_x, start_y = self.city_coords[path[0]-1]
-        plt.plot(start_x, start_y, 'go', markersize=15, alpha=0.5, label='Start')
-        
-        plt.title(f'TSP Route (Distance: {solution.fitness:.2f})')
-        plt.axis('equal')  # Make the plot circular
-        plt.grid(True)
-        plt.legend()
-        plt.show()
-
-    def create_solution(self, representation):
-        return Solution(representation, self)
-
-    def update_path(self, new_path):
-        self.path = new_path
 
 
 class Graph:
