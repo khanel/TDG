@@ -3,95 +3,31 @@ import math
 from typing import Callable, Tuple, List, Optional
 import matplotlib.pyplot as plt
 
-class IGWO:
-    """
-    Improved Gray Wolf Optimizer (IGWO) implementation based on the paper:
-    "An improved gray wolf optimization algorithm solving to functional optimization and engineering design problems"
-    
-    Features:
-    - Lens imaging reverse learning for initial population
-    - Nonlinear control parameter convergence strategy
-    - Modified search mechanism inspired by TSA and PSO
-    """
-    
-    def __init__(self, 
-                 objective_func: Callable[[np.ndarray], float],
-                 dim: int,
-                 lb: float,
-                 ub: float,
-                 population_size: int = 30,
-                 max_iter: int = 1000,
-                 k: float = 0.3,
-                 a_initial: float = 2.0,
-                 a_end: float = 0.0,
-                 b1: float = 0.5,
-                 b2: float = 0.5):
-        """
-        Initialize the IGWO optimizer.
-        
-        Parameters:
-        - objective_func: The objective function to minimize
-        - dim: Dimension of the problem
-        - lb: Lower bound for each dimension
-        - ub: Upper bound for each dimension
-        - population_size: Number of wolves in the population
-        - max_iter: Maximum number of iterations
-        - k: Nonlinear modulation index for control parameter
-        - a_initial: Initial value of parameter a
-        - a_end: Final value of parameter a
-        - b1: Individual memory coefficient
-        - b2: Group communication coefficient
-        """
-        self.objective_func = objective_func
-        self.dim = dim
-        self.lb = lb
-        self.ub = ub
-        self.population_size = population_size
-        self.max_iter = max_iter
+from Core.search_algorithm import SearchAlgorithm
+from Core.problem import Solution
+
+class IGWO(SearchAlgorithm):
+    def __init__(self, problem, population_size, max_iterations=1000, k=0.3, a_initial=2.0, a_end=0.0, b1=0.5, b2=0.5, **kwargs):
+        super().__init__(problem, population_size, **kwargs)
+        self.max_iterations = max_iterations
         self.k = k
         self.a_initial = a_initial
         self.a_end = a_end
         self.b1 = b1
         self.b2 = b2
+        self.iteration = 0
+        self.pbest: list[Solution] = []
+        self.pbest_score: list[float] = []
+        self.convergence_curve = []
         
-        # Initialize population and fitness
-        self.population = None
-        self.fitness = None
-        self.alpha = None
-        self.beta = None
-        self.delta = None
-        self.alpha_score = float('inf')
-        self.beta_score = float('inf')
-        self.delta_score = float('inf')
-        
-        # For modified search mechanism
-        self.pbest_pos = None
-        self.pbest_score = None
-        
-        # For tracking convergence
-        self.convergence_curve = np.zeros(max_iter)
-        
-    def initialize_population(self):
-        """Initialize the population with lens imaging reverse learning."""
-        # Standard random initialization
-        self.population = np.random.uniform(self.lb, self.ub, (self.population_size, self.dim))
-        
-        # Apply lens imaging reverse learning
-        k_init = (1 + (1 / self.max_iter)**0.5)**8  # Initial k value
-        reverse_population = self.lens_imaging_reverse(self.population, k_init)
-        
-        # Combine and select best
-        combined_pop = np.vstack((self.population, reverse_population))
-        fitness = np.array([self.objective_func(ind) for ind in combined_pop])
-        
-        # Select top population_size individuals
-        best_indices = np.argsort(fitness)[:self.population_size]
-        self.population = combined_pop[best_indices]
-        self.fitness = fitness[best_indices]
-        
-        # Initialize personal best
-        self.pbest_pos = self.population.copy()
-        self.pbest_score = self.fitness.copy()
+    def initialize(self):
+        # Use problem's initial population of Solution objects
+        self.population = self.problem.get_initial_population(self.population_size)
+        for sol in self.population:
+            sol.evaluate()
+        self.pbest = [Solution(sol.representation.copy(), sol.problem) for sol in self.population]
+        self.pbest_score = [sol.fitness for sol in self.population]
+        self._update_best_solution()
         
     def lens_imaging_reverse(self, population: np.ndarray, k: float) -> np.ndarray:
         """
@@ -127,53 +63,48 @@ class IGWO:
         """
         return (self.a_initial - self.a_end) * np.exp(-(t**2)/(self.k * self.max_iter)**2) + self.a_end
     
-    def update_position(self, t: int):
-        """
-        Update the position of wolves using the modified search mechanism.
-        
-        Parameters:
-        - t: Current iteration
-        """
-        a = self.update_control_parameter(t)
-        
-        for i in range(self.population_size):
-            # Update A and C parameters
-            A1 = 2 * a * np.random.rand(self.dim) - a
-            C1 = 2 * np.random.rand(self.dim)
-            
-            A2 = 2 * a * np.random.rand(self.dim) - a
-            C2 = 2 * np.random.rand(self.dim)
-            
-            # Calculate new positions based on alpha and beta
-            D_alpha = np.abs(C1 * self.alpha - self.population[i])
-            X1 = self.alpha - A1 * D_alpha
-            
-            D_beta = np.abs(C2 * self.beta - self.population[i])
-            X2 = self.beta - A2 * D_beta
-            
-            # Calculate weights based on fitness
-            w1 = self.alpha_score / (self.alpha_score + self.beta_score)
-            w2 = self.beta_score / (self.alpha_score + self.beta_score)
-            
-            # Modified position update equation
-            r3 = np.random.rand(self.dim)
-            r4 = np.random.rand(self.dim)
-            perturbation = np.random.randn() + 2  # randn() + 2 to avoid division by zero
-            
-            self.population[i] = (w1 * X1 + w2 * X2 + 
-                                (self.b1 * r3 * (self.pbest_pos[i] - self.population[i]) + 
-                                 self.b2 * r4 * (X1 - self.population[i]))) / perturbation
-            
-            # Ensure bounds are respected
-            self.population[i] = np.clip(self.population[i], self.lb, self.ub)
-            
-            # Update fitness
-            self.fitness[i] = self.objective_func(self.population[i])
-            
-            # Update personal best
-            if self.fitness[i] < self.pbest_score[i]:
-                self.pbest_score[i] = self.fitness[i]
-                self.pbest_pos[i] = self.population[i].copy()
+    def step(self):
+        a = self.update_control_parameter(self.iteration)
+        # Find alpha and beta wolves
+        fitness = np.array([sol.fitness if sol.fitness is not None else sol.evaluate() for sol in self.population])
+        idx = np.argsort(fitness)
+        alpha = self.population[idx[0]]
+        beta = self.population[idx[1]]
+        # Update positions
+        new_population = []
+        for i, wolf in enumerate(self.population):
+            A1 = 2 * a * np.random.rand(*np.shape(wolf.representation)) - a
+            C1 = 2 * np.random.rand(*np.shape(wolf.representation))
+            A2 = 2 * a * np.random.rand(*np.shape(wolf.representation)) - a
+            C2 = 2 * np.random.rand(*np.shape(wolf.representation))
+            D_alpha = np.abs(C1 * alpha.representation - wolf.representation)
+            X1 = alpha.representation - A1 * D_alpha
+            D_beta = np.abs(C2 * beta.representation - wolf.representation)
+            X2 = beta.representation - A2 * D_beta
+            w1 = fitness[idx[0]] / (fitness[idx[0]] + fitness[idx[1]])
+            w2 = fitness[idx[1]] / (fitness[idx[0]] + fitness[idx[1]])
+            r3 = np.random.rand(*np.shape(wolf.representation))
+            r4 = np.random.rand(*np.shape(wolf.representation))
+            perturbation = np.random.randn() + 2
+            # Use pbest for memory
+            pbest_vec = self.pbest[i].representation
+            new_repr = (w1 * X1 + w2 * X2 + (self.b1 * r3 * (pbest_vec - wolf.representation) + self.b2 * r4 * (X1 - wolf.representation))) / perturbation
+            # Boundary handling
+            info = self.problem.get_problem_info()
+            lb = np.array(info.get('lower_bounds', -np.inf))
+            ub = np.array(info.get('upper_bounds', np.inf))
+            new_repr = np.clip(new_repr, lb, ub)
+            new_sol = Solution(new_repr, self.problem)
+            new_sol.evaluate()
+            # Update pbest
+            if new_sol.fitness < self.pbest_score[i]:
+                self.pbest[i] = Solution(new_sol.representation.copy(), new_sol.problem)
+                self.pbest_score[i] = new_sol.fitness
+            new_population.append(new_sol)
+        self.population = new_population
+        self._update_best_solution()
+        self.iteration += 1
+        self.convergence_curve.append(self.best_solution.fitness)
     
     def update_leaders(self):
         """Update the alpha, beta, and delta wolves."""
