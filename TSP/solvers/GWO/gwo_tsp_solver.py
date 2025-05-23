@@ -52,46 +52,28 @@ class TSPGWOSolver(GrayWolfOptimization):
         plt.show()
 
     def update_live_plot(self, best_path, iteration, best_fitness):
-        """Update the live plot with current best solution."""
         if best_path is None:
             return
-        
         if self.live_ax is None:
             self.setup_live_plot()
-
         self.live_ax.clear()
-        
-        # Plot cities with annotations
         for i, (x, y) in enumerate(self.city_coords, 1):
             self.live_ax.plot(x, y, 'ro', markersize=10)
             self.live_ax.annotate(f'{i}', (x, y), xytext=(5, 5), textcoords='offset points')
-
-        # Plot path with directional arrows
         path = np.array(best_path).astype(int)
         n = len(path)
         for i in range(n):
-            city1 = path[i]
-            city2 = path[(i + 1) % n]
-            x1, y1 = self.city_coords[city1 - 1]
-            x2, y2 = self.city_coords[city2 - 1]
-            dx = x2 - x1
-            dy = y2 - y1
-            self.live_ax.arrow(x1, y1, dx, dy,
-                             head_width=0.3,
-                             head_length=0.3,
-                             fc='blue',
-                             ec='blue',
-                             alpha=0.6)
-
-        # Highlight starting city
-        start_x, start_y = self.city_coords[0]  # Always start from city 1
+            city1 = path[i] - 1
+            city2 = path[(i + 1) % n] - 1
+            x1, y1 = self.city_coords[city1]
+            x2, y2 = self.city_coords[city2]
+            self.live_ax.arrow(x1, y1, x2 - x1, y2 - y1, head_width=0.18, head_length=0.3, fc='blue', ec='blue', alpha=0.6)
+        start_x, start_y = self.city_coords[0]
         self.live_ax.plot(start_x, start_y, 'go', markersize=15, alpha=0.5, label='Start')
-        
         self.live_ax.set_title(f'Generation {iteration}\nCurrent Distance: {best_fitness:.2f}')
         self.live_ax.axis('equal')
         self.live_ax.grid(True)
         self.live_ax.legend()
-
         self.live_fig.canvas.draw()
         self.live_fig.canvas.flush_events()
         plt.pause(0.01)
