@@ -25,32 +25,10 @@ class IGWO(SearchAlgorithm):
         self.population = self.problem.get_initial_population(self.population_size)
         for sol in self.population:
             sol.evaluate()
-        self.pbest = [Solution(sol.representation.copy(), sol.problem) for sol in self.population]
+        self.pbest = [sol.copy() for sol in self.population]
         self.pbest_score = [sol.fitness for sol in self.population]
         self._update_best_solution()
         
-    def lens_imaging_reverse(self, population: np.ndarray, k: float) -> np.ndarray:
-        """
-        Apply lens imaging reverse learning to generate reverse population.
-        
-        Parameters:
-        - population: Current population
-        - k: Scaling factor of the lens
-        
-        Returns:
-        - Reverse population
-        """
-        min_vals = np.min(population, axis=0)
-        max_vals = np.max(population, axis=0)
-        
-        # Calculate reverse positions
-        reverse_pop = (min_vals + max_vals)/2 + (min_vals + max_vals)/(2*k) - population/k
-        
-        # Ensure bounds are respected
-        reverse_pop = np.clip(reverse_pop, self.lb, self.ub)
-        
-        return reverse_pop
-    
     def update_control_parameter(self, t: int) -> float:
         """
         Update the nonlinear control parameter a.
@@ -61,9 +39,122 @@ class IGWO(SearchAlgorithm):
         Returns:
         - Updated a value
         """
-        return (self.a_initial - self.a_end) * np.exp(-(t**2)/(self.k * self.max_iter)**2) + self.a_end
+        return (self.a_initial - self.a_end) * np.exp(-(t**2)/(self.k * self.max_iterations)**2) + self.a_end
     
     def step(self):
+        # Check problem type
+        problem_info = self.problem.get_problem_info()
+        problem_type = problem_info.get('problem_type', 'continuous')
+        
+        if problem_type == 'discrete':
+            # For discrete problems like TSP, use a discrete adaptation of IGWO
+            self._discrete_step()
+        else:
+            # For continuous problems, use the standard IGWO
+            self._continuous_step()
+            
+        self._update_best_solution()
+        self.iteration += 1
+        
+    def _discrete_step(self):
+        """
+        Adaptation of IGWO for discrete problems like TSP.
+        """
+        # Make sure pbest has the same length as population
+        if len(self.pbest) != len(self.population):
+            print(f"Resetting pbest: {len(self.pbest)} != {len(self.population)}")
+            self.pbest = [sol.copy() for sol in self.population]
+            self.pbest_score = [sol.fitness for sol in self.population]
+            
+        # Sort wolves by fitness
+        self.population.sort(key=lambda x: x.fitness if x.fitness is not None else float('inf'))
+        
+        # Alpha and beta are the two best solutions
+        alpha, beta = self.population[0], self.population[1]
+        
+        # Update control parameter
+        a = self.update_control_parameter(self.iteration)
+        
+        new_population = []
+        for i, wolf in enumerate(self.population):
+            # Create a new solution based on alpha, beta, and pbest
+            if np.random.rand() < a:  # Higher probability in early iterations
+                # Apply crossover with leaders
+                if np.random.rand() < 0.5:
+                    leader = alpha
+                else:
+                    leader = beta
+                    
+                # Create a new solution through crossover
+                new_repr = self._discrete_crossover(wolf.representation, leader.representation)
+                
+                # Apply a small perturbation (mutation)
+                if np.random.rand() < self.b1:
+                    new_repr = self._discrete_mutate(new_repr)
+                    
+                # Apply crossover with personal best with probability b2
+                if np.random.rand() < self.b2:
+                    new_repr = self._discrete_crossover(new_repr, self.pbest[i].representation)
+            else:
+                # More exploration in later iterations
+                new_repr = self._discrete_mutate(wolf.representation.copy())
+            
+            # Create and evaluate new solution
+            new_sol = Solution(new_repr, self.problem)
+            new_sol.evaluate()
+            
+            # Update pbest
+            if new_sol.fitness < self.pbest_score[i]:
+                self.pbest[i] = Solution(new_sol.representation.copy(), new_sol.problem)
+                self.pbest_score[i] = new_sol.fitness
+                
+            new_population.append(new_sol)
+            
+        self.population = new_population
+        
+    def _discrete_crossover(self, wolf_repr, leader_repr):
+        """Crossover operation for discrete problems like TSP."""
+        # Create a new solution that follows the leader partially
+        n = len(wolf_repr)
+        # Start with city 1 (fixed)
+        new_repr = [1]
+        
+        # Copy a random segment from the leader (maintaining relative order)
+        segment_length = np.random.randint(1, n // 2)
+        start_pos = np.random.randint(1, n - segment_length)
+        segment = leader_repr[start_pos:start_pos + segment_length]
+        
+        # Add cities from the segment that aren't already in new_repr
+        for city in segment:
+            if city not in new_repr:
+                new_repr.append(city)
+        
+        # Add remaining cities from wolf in their original order
+        for city in wolf_repr:
+            if city not in new_repr:
+                new_repr.append(city)
+                
+        return new_repr
+        
+    def _discrete_mutate(self, representation):
+        """Mutation operation for discrete problems like TSP."""
+        # Apply a random swap mutation
+        new_repr = representation.copy()
+        n = len(new_repr)
+        
+        if n > 3:  # Need at least 3 cities to swap (since city 1 is fixed)
+            # Choose how many swaps to perform (1-3)
+            num_swaps = np.random.randint(1, min(4, n//2))
+            
+            for _ in range(num_swaps):
+                # Swap two random cities (excluding city 1)
+                i, j = np.random.choice(range(1, n), size=2, replace=False)
+                new_repr[i], new_repr[j] = new_repr[j], new_repr[i]
+                
+        return new_repr
+        
+    def _continuous_step(self):
+        """Original IGWO algorithm for continuous problems."""
         a = self.update_control_parameter(self.iteration)
         # Find alpha and beta wolves
         fitness = np.array([sol.fitness if sol.fitness is not None else sol.evaluate() for sol in self.population])
