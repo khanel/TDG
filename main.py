@@ -8,6 +8,7 @@ for solving the Traveling Salesperson Problem (TSP).
 import argparse
 from TSP.solvers.Hybrid.RoundRobin.round_robin import run_hybrid_round_robin
 from TSP.solvers.Hybrid.Parallel.parallel import run_hybrid_parallel
+from TSP.solvers.Hybrid.Phased.phased_solver import run_hybrid_phased
 
 def main():
     """Parse command line arguments and run the selected hybrid approach."""
@@ -20,7 +21,7 @@ def main():
         "--approach", 
         "-a", 
         default="round_robin",
-        choices=["round_robin", "parallel"], 
+        choices=["round_robin", "parallel", "phased"], 
         help="The hybrid approach to use (default: round_robin)"
     )
     
@@ -70,6 +71,32 @@ def main():
         help="Disable saving plot images"
     )
     
+    # Add phased-specific arguments
+    parser.add_argument(
+        "--igwo-share",
+        type=float,
+        default=0.33,
+        help="Proportion of iterations for IGWO in phased approach (default: 0.33)"
+    )
+    parser.add_argument(
+        "--gwo-share",
+        type=float,
+        default=0.33,
+        help="Proportion of iterations for GWO in phased approach (default: 0.33)"
+    )
+    parser.add_argument(
+        "--ga-mutation",
+        type=float,
+        default=0.1,
+        help="Mutation rate for GA in phased approach (default: 0.1)"
+    )
+    parser.add_argument(
+        "--ga-crossover",
+        type=float,
+        default=0.8,
+        help="Crossover rate for GA in phased approach (default: 0.8)"
+    )
+    
     args = parser.parse_args()
     
     # Common parameters for all approaches
@@ -88,6 +115,14 @@ def main():
         run_hybrid_round_robin(**common_params)
     elif args.approach == "parallel":
         run_hybrid_parallel(sharing_interval=args.sharing_interval, **common_params)
+    elif args.approach == "phased":
+        phased_params = {
+            "igwo_share": args.igwo_share,
+            "gwo_share": args.gwo_share,
+            "ga_mutation_rate": args.ga_mutation,
+            "ga_crossover_rate": args.ga_crossover
+        }
+        run_hybrid_phased(**common_params, **phased_params)
     else:
         print(f"Hybrid approach '{args.approach}' is not implemented yet.")
 
