@@ -19,7 +19,7 @@ class TSPGeneticOperator(GeneticOperator):
         self.mutation_prob = mutation_prob
     
     def select(self, population):
-        # Tournament selection
+        # Tournament selection working with Solution objects
         tournament_size = 3
         selected = []
         for _ in range(2):
@@ -27,19 +27,21 @@ class TSPGeneticOperator(GeneticOperator):
             winner = min(tournament, key=lambda x: x.fitness if x.fitness is not None else float('inf'))
             if winner.fitness is None:
                 winner.evaluate()
-            selected.append(winner)
+            # Return a new Solution object to avoid side effects
+            selected.append(Solution(winner.representation.copy(), winner.problem))
         return selected
 
     def crossover(self, parent1, parent2):
         if np.random.random() > self.selection_prob:
-            return [parent1, parent2]
+            # Return new Solution objects to avoid reference issues
+            return [Solution(parent1.representation.copy(), parent1.problem), Solution(parent2.representation.copy(), parent2.problem)]
 
         # Order Crossover (OX) maintaining city 1 as start
         n = len(parent1.representation)
         # Choose section after city 1
         start = 1 + np.random.randint(0, n-2)
         end = 1 + np.random.randint(start, n-1)
-        
+
         def create_child(p1, p2):
             # Keep city 1 as start, apply OX to rest of route
             child = [1] + [-1] * (n-1)  # Initialize with -1s after city 1
@@ -53,27 +55,28 @@ class TSPGeneticOperator(GeneticOperator):
             # Fill positions between city 1 and start
             for i in range(1, start):
                 child[i] = remaining.pop(0)
-            return Solution(child, parent1.problem)
+            sol = Solution(child, p1.problem)
+            sol.evaluate()
+            return sol
 
         child1 = create_child(parent1, parent2)
         child2 = create_child(parent2, parent1)
-        child1.evaluate()
-        child2.evaluate()
         return [child1, child2]
 
     def mutate(self, individual):
         if np.random.random() > self.mutation_prob:
-            return individual
-        
+            # Return a new Solution object to avoid reference issues
+            return Solution(individual.representation.copy(), individual.problem)
+
         # Swap Mutation (avoiding city 1)
         n = len(individual.representation)
         # Choose two random positions after city 1
         pos1, pos2 = np.random.choice(range(1, n), size=2, replace=False)
-        
+
         # Create new representation with the swap
         new_repr = individual.representation.copy()
         new_repr[pos1], new_repr[pos2] = new_repr[pos2], new_repr[pos1]
-        
+
         mutated = Solution(new_repr, individual.problem)
         mutated.evaluate()
         return mutated
