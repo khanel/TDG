@@ -8,132 +8,53 @@ It includes an abstract base class that defines the generic interface.
 
 import abc
 
-class BaseGWO(abc.ABC):
-    def __init__(self, problem):
-        self.problem = problem
+from Core.search_algorithm import SearchAlgorithm
+from Core.problem import Solution
 
-    @abc.abstractmethod
-    def initialize_population(self):
-        """Initialize the population of wolves."""
-        pass
+class GrayWolfOptimization(SearchAlgorithm):
+    def __init__(self, problem, population_size, max_iterations=100, **kwargs):
+        super().__init__(problem, population_size, **kwargs)
+        self.max_iterations = max_iterations
+        self.iteration = 0
 
-    @abc.abstractmethod
-    def update_positions(self, alpha_pos, beta_pos, delta_pos, a):
-        """Update the positions of wolves based on the leader hierarchy."""
-        pass
+    def initialize(self):
+        self.population = self.problem.get_initial_population(self.population_size)
+        for sol in self.population:
+            sol.evaluate()
+        self._update_best_solution()
 
-    @abc.abstractmethod
-    def optimize(self, max_iter=100):
-        """Execute the optimization process."""
-        pass
+    def step(self):
+        # Evaluate fitness and find alpha, beta, delta
+        fitness = np.array([sol.fitness if sol.fitness is not None else sol.evaluate() for sol in self.population])
+        idx = np.argsort(fitness)
+        alpha, beta, delta = self.population[idx[0]], self.population[idx[1]], self.population[idx[2]]
 
-class GrayWolfOptimization(BaseGWO):
-    def initialize_population(self):
-        # Implementation for population initialization using a generic algorithm.
-        # If the problem object defines an 'initialize' method, invoke it.
-        # Otherwise, attempt to create a population using the following attributes:
-        #   - population_size: number of wolves in the population
-        #   - dim: dimensionality of each wolf's solution
-        #   - lower_bound: lower bound(s) of the search space
-        #   - upper_bound: upper bound(s) of the search space
-        if hasattr(self.problem, "initialize"):
-            self.problem.initialize()
-        else:
-            try:
-                pop_size = self.problem.population_size
-                dim = self.problem.dim
-                lb = self.problem.lower_bound
-                ub = self.problem.upper_bound
-            except AttributeError:
-                print("Population initialization attributes missing. Using default implementation.")
-                return
-            # Ensure lower_bound and upper_bound are numpy arrays for proper vectorized operations.
-            lb = np.array(lb)
-            ub = np.array(ub)
-            self.problem.population = np.random.uniform(lb, ub, (pop_size, dim))
-            print(f"Population initialized with shape: {self.problem.population.shape}")
+        # Linearly decrease 'a' from 2 to 0
+        a = 2 - self.iteration * (2 / self.max_iterations)
 
-    def update_positions(self, alpha_pos, beta_pos, delta_pos, a):
-        # Implementation for updating positions of wolves
-        # This would normally update wolf positions based on alpha, beta, and delta positions
-        try:
-            population = self.problem.population
-        except AttributeError as e:
-            print(f"Error: {e}. Population not defined in problem. Using default implementation.")
-            return
+        new_population = []
+        for wolf in self.population:
+            X1 = self._update_position(wolf, alpha, a)
+            X2 = self._update_position(wolf, beta, a)
+            X3 = self._update_position(wolf, delta, a)
+            new_repr = (np.array(X1) + np.array(X2) + np.array(X3)) / 3
+            # Boundary handling
+            info = self.problem.get_problem_info()
+            lb = np.array(info.get('lower_bounds', -np.inf))
+            ub = np.array(info.get('upper_bounds', np.inf))
+            new_repr = np.clip(new_repr, lb, ub)
+            new_sol = Solution(new_repr, self.problem)
+            new_sol.evaluate()
+            new_population.append(new_sol)
+        self.population = new_population
+        self._update_best_solution()
+        self.iteration += 1
 
-        # GWO equations
-        r1 = np.random.rand(*population.shape)
-        r2 = np.random.rand(*population.shape)
-
-        A1 = 2 * a * r1 - a
-        C1 = 2 * r2
-
-        D_alpha = np.abs(C1 * alpha_pos - population)
-        X1 = alpha_pos - A1 * D_alpha
-
-        r1 = np.random.rand(*population.shape)
-        r2 = np.random.rand(*population.shape)
-
-        A2 = 2 * a * r1 - a
-        C2 = 2 * r2
-
-        D_beta = np.abs(C2 * beta_pos - population)
-        X2 = beta_pos - A2 * D_beta
-
-        r1 = np.random.rand(*population.shape)
-        r2 = np.random.rand(*population.shape)
-
-        A3 = 2 * a * r1 - a
-        C3 = 2 * r2
-
-        D_delta = np.abs(C3 * delta_pos - population)
-        X3 = delta_pos - A3 * D_delta
-
-        new_population = (X1 + X2 + X3) / 3
-
-        # Apply boundary handling
-        lb = self.problem.lower_bound
-        ub = self.problem.upper_bound
-        new_population = np.clip(new_population, lb, ub)
-
-        # Update the population
-        self.problem.population = new_population
-
-    def optimize(self, max_iter=100):
-        """
-        Execute the optimization process."""
-        self.initialize_population()
-        try:
-            population = self.problem.population
-        except AttributeError:
-            print("Population not initialized. Cannot proceed with optimization.")
-            return None
-
-        # Get the dimensionality of the problem
-        dim = population.shape[1]
-
-        for iter_num in range(max_iter):
-            # Evaluate fitness of each wolf
-            fitness = np.array([self.problem.fitness_function(wolf) for wolf in population])
-
-            # Find alpha, beta, and delta wolves
-            alpha_idx, beta_idx, delta_idx = np.argsort(fitness)[:3]
-            alpha_pos = population[alpha_idx]
-            beta_pos = population[beta_idx]
-            delta_pos = population[delta_idx]
-
-            # Linearly decrease 'a' from 2 to 0
-            a = 2 - iter_num * (2 / max_iter)
-
-            # Update positions of all wolves
-            self.update_positions(alpha_pos, beta_pos, delta_pos, a)
-
-            # Optionally, log the progress or check for convergence here
-            print(f"Iteration {iter_num+1}/{max_iter} completed.")
-
-        if hasattr(self.problem, "get_best_solution"):
-            return self.problem.get_best_solution()
-        else:
-            print("Optimization complete (default implementation).")
-            return alpha_pos # Returning alpha position as the best solution
+    def _update_position(self, wolf, leader, a):
+        r1 = np.random.rand(*np.shape(wolf.representation))
+        r2 = np.random.rand(*np.shape(wolf.representation))
+        A = 2 * a * r1 - a
+        C = 2 * r2
+        D = np.abs(C * leader.representation - wolf.representation)
+        X = leader.representation - A * D
+        return X
