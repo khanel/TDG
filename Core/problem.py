@@ -15,6 +15,13 @@ class Solution:
             self.fitness = self.problem.evaluate(self)
         return self.fitness
 
+    def copy(self):
+        """Creates a deep copy of this solution."""
+        import copy
+        new_solution = Solution(copy.deepcopy(self.representation), self.problem)
+        new_solution.fitness = self.fitness
+        return new_solution
+
     def __lt__(self, other: 'Solution') -> bool:
         """Allows comparison based on fitness (assuming minimization)."""
         if self.fitness is None or other.fitness is None:
