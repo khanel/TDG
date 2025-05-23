@@ -37,6 +37,8 @@ class Solution:
     -------
     evaluate()
         Evaluates this solution and sets its fitness.
+    copy()
+        Creates a deep copy of this solution.
     """
     def __init__(self, representation, problem):
         self.representation = representation
@@ -44,7 +46,43 @@ class Solution:
         self.fitness = None
 
     def evaluate(self):
-        self.fitness = self.problem.calculate_fitness(self.representation)
+        # Use problem.evaluate instead of problem.calculate_fitness
+        if hasattr(self.problem, 'evaluate'):
+            self.fitness = self.problem.evaluate(self)
+        elif hasattr(self.problem, 'calculate_fitness'):
+            self.fitness = self.problem.calculate_fitness(self.representation)
+        return self.fitness
+        
+    def copy(self):
+        import copy
+        new_solution = Solution(copy.deepcopy(self.representation), self.problem)
+        new_solution.fitness = self.fitness
+        return new_solution
+        
+    def __lt__(self, other):
+        """Allows comparison based on fitness (assuming minimization)."""
+        if self.fitness is None or other.fitness is None:
+            return False  # Cannot compare if fitness is unknown
+        return self.fitness < other.fitness
+
+    def __gt__(self, other):
+        """Allows comparison based on fitness (assuming minimization)."""
+        if self.fitness is None or other.fitness is None:
+            return False  # Cannot compare if fitness is unknown
+        return self.fitness > other.fitness
+
+    def __eq__(self, other):
+        """Checks if two solutions are equal based on representation."""
+        if not isinstance(other, Solution):
+            return NotImplemented
+        # Try numpy array comparison if applicable
+        try:
+            import numpy as np
+            if isinstance(self.representation, np.ndarray) and isinstance(other.representation, np.ndarray):
+                return np.array_equal(self.representation, other.representation)
+        except ImportError:
+            pass
+        return self.representation == other.representation
 
 
 
