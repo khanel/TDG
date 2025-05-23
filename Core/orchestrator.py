@@ -49,14 +49,28 @@ class HybridSearchOrchestrator:
         """Run the orchestrator for max_iterations."""
         for _ in range(self.max_iterations):
             self.step()
+        
+        # Ensure the best solution has its fitness calculated
+        if self.best_solution and self.best_solution.fitness is None:
+            self.best_solution.evaluate()
+            
         return self.best_solution
 
     def _update_best_solution(self):
         """Update the overall best solution found so far."""
         if self.shared_population:
+            # Ensure all solutions have fitness calculated
+            for sol in self.shared_population:
+                if sol.fitness is None:
+                    sol.evaluate()
+                    
             current_best = min(self.shared_population, default=None)
             if current_best and (self.best_solution is None or current_best < self.best_solution):
                 self.best_solution = current_best.copy()
+                
+            # Ensure best solution has fitness calculated
+            if self.best_solution and self.best_solution.fitness is None:
+                self.best_solution.evaluate()
 
     def get_history(self):
         return self.history
