@@ -8,10 +8,18 @@ class RLEnv(gym.Env):
     """
     metadata = {'render_modes': ['human'], 'render_fps': 30}
 
+    # Reward component constants (can be tuned)
+    REWARD_IMPROVEMENT_FACTOR = 10.0
+    REWARD_NO_IMPROVEMENT_PENALTY_STEP = -2.0  # Flat penalty for a step that yields no improvement
+    REWARD_ITERATION_COST_FACTOR = -0.05  # Cost per iteration spent in the action
+
+    TERMINATION_REWARD_BASE_FITNESS_FACTOR = 200.0  # e.g., 200 / (1 + fitness)
+    TERMINATION_REWARD_BUDGET_USAGE_PENALTY_FACTOR = 20.0  # Penalty for (iter_used / total_iter) * factor
+
     def __init__(self, problem_instance, total_max_iterations, iteration_options=None):
         super(RLEnv, self).__init__()
 
-        self.problem_instance = problem_instance # TODO: Define how problem instance is passed and used
+        self.problem_instance = problem_instance
         self.total_max_iterations = total_max_iterations
         self.iteration_options = iteration_options if iteration_options is not None else [10, 20, 50, 100]
         
@@ -55,20 +63,22 @@ class RLEnv(gym.Env):
         obs_high = np.array([self.total_max_iterations, np.inf], dtype=np.float32)
         self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
 
-        # TODO: Initialize exploration and exploitation strategy handlers
-        # self.exploration_strategy = None
-        # self.exploitation_strategy = None
+        # Initialize exploration and exploitation strategy handlers
+        # These handlers would likely take self.problem_instance and be reset with the environment
+        self.exploration_strategy = None  # TODO: Replace with actual ExplorationStrategy instance
+        self.exploitation_strategy = None # TODO: Replace with actual ExploitationStrategy instance
 
     def _get_obs(self):
         """Helper function to get the current observation."""
         return np.array([self.current_iterations_passed, self.best_fitness_so_far], dtype=np.float32)
 
     def reset(self, seed=None, options=None):
-        super().reset(seed=seed) # Important for reproducibility
+        super().reset(seed=seed)
 
         self.current_iterations_passed = 0
-        self.best_fitness_so_far = float('inf') # Reset for a new episode
+        self.best_fitness_so_far = float('inf')
         # TODO: Reset problem state if necessary (e.g., clear solution caches in underlying algos)
+        # TODO: Reset exploration_strategy and exploitation_strategy if they have internal state
         
         observation = self._get_obs()
         info = {} # Additional info (optional)
@@ -78,68 +88,115 @@ class RLEnv(gym.Env):
         terminated = False
         truncated = False # For time limits not part of the MDP
         reward = 0
-        
+        info = {} # Additional info (optional)
+
+        # Check for termination due to budget exhaustion *before* processing the current action
+        if self.current_iterations_passed >= self.total_max_iterations:
+            terminated = True
+            reward = self._calculate_termination_reward(self.best_fitness_so_far, self.current_iterations_passed)
+            observation = self._get_obs()
+            info['status'] = "terminated_max_iterations_reached_before_action"
+            return observation, reward, terminated, truncated, info
+
         strategy_choice, iteration_budget_idx = action
         action_iteration_budget = 0
         if strategy_choice < 2: # Explore or Exploit
             action_iteration_budget = self.iteration_options[iteration_budget_idx]
 
-        if self.current_iterations_passed >= self.total_max_iterations:
-            terminated = True # Episode ends if max iterations reached
-            # reward can be based on final fitness, or a penalty for not terminating sooner if good solution found
-        
-        if not terminated:
-            if strategy_choice == 0: # Explore
-                # TODO: Execute exploration strategy for 'action_iteration_budget'
-                # new_fitness = self.exploration_strategy.run(action_iteration_budget)
-                # self.current_iterations_passed += action_iteration_budget
-                # reward = self._calculate_reward(self.best_fitness_so_far, new_fitness)
-                # if new_fitness < self.best_fitness_so_far:
-                #    self.best_fitness_so_far = new_fitness
-                self.current_iterations_passed += action_iteration_budget # Placeholder update
-                pass # Placeholder
-            elif strategy_choice == 1: # Exploit
-                # TODO: Execute exploitation strategy for 'action_iteration_budget'
-                # new_fitness = self.exploitation_strategy.run(action_iteration_budget)
-                # self.current_iterations_passed += action_iteration_budget
-                # reward = self._calculate_reward(self.best_fitness_so_far, new_fitness)
-                # if new_fitness < self.best_fitness_so_far:
-                #    self.best_fitness_so_far = new_fitness
-                self.current_iterations_passed += action_iteration_budget # Placeholder update
-                pass # Placeholder
-            elif strategy_choice == 2: # Terminate
-                terminated = True
-                # reward = self._calculate_termination_reward(self.best_fitness_so_far, self.current_iterations_passed)
-                pass # Placeholder
+        new_fitness_from_strategy = self.best_fitness_so_far
+        actual_iterations_spent_by_strategy = 0
 
-        # Ensure current_iterations_passed does not exceed total_max_iterations due to the last action
-        if self.current_iterations_passed > self.total_max_iterations:
-            self.current_iterations_passed = self.total_max_iterations
+        if strategy_choice == 0: # Explore
+            # --- Mocking Exploration Strategy Call ---
+            # TODO: Replace with:
+            # actual_iterations_spent_by_strategy, new_fitness_from_strategy = self.exploration_strategy.run(
+            #     self.problem_instance, action_iteration_budget, self.best_fitness_so_far
+            # )
+            actual_iterations_spent_by_strategy = action_iteration_budget # Assume it uses the full budget for now
+            if np.random.rand() < 0.6: # 60% chance of some change
+                change = (np.random.rand() - 0.4) * 20 # Simulates finding a new fitness (can be better or worse)
+                new_fitness_from_strategy = max(0, self.best_fitness_so_far - change) # Ensure non-negative fitness
+            else: # 40% chance no change from exploration
+                new_fitness_from_strategy = self.best_fitness_so_far
+            # --- End Mocking ---
+            
+            reward = self._calculate_reward(self.best_fitness_so_far, new_fitness_from_strategy, actual_iterations_spent_by_strategy)
+            if new_fitness_from_strategy < self.best_fitness_so_far:
+                self.best_fitness_so_far = new_fitness_from_strategy
+            self.current_iterations_passed += actual_iterations_spent_by_strategy
+            info['status'] = "explore_step"
 
+        elif strategy_choice == 1: # Exploit
+            # --- Mocking Exploitation Strategy Call ---
+            # TODO: Replace with:
+            # actual_iterations_spent_by_strategy, new_fitness_from_strategy = self.exploitation_strategy.run(
+            #     self.problem_instance, action_iteration_budget, self.best_fitness_so_far
+            # )
+            actual_iterations_spent_by_strategy = action_iteration_budget # Assume it uses the full budget
+            if np.random.rand() < 0.8: # 80% chance of some change (exploitation is more directed)
+                change = (np.random.rand() - 0.2) * 10 # Simulates smaller, more certain improvement
+                new_fitness_from_strategy = max(0, self.best_fitness_so_far - change)
+            else: # 20% chance no change
+                new_fitness_from_strategy = self.best_fitness_so_far
+            # --- End Mocking ---
+
+            reward = self._calculate_reward(self.best_fitness_so_far, new_fitness_from_strategy, actual_iterations_spent_by_strategy)
+            if new_fitness_from_strategy < self.best_fitness_so_far:
+                self.best_fitness_so_far = new_fitness_from_strategy
+            self.current_iterations_passed += actual_iterations_spent_by_strategy
+            info['status'] = "exploit_step"
+            
+        elif strategy_choice == 2: # Terminate by agent's choice
+            terminated = True
+            # Iterations spent for this "terminate" action is 0.
+            # The reward is based on the state *before* this termination action.
+            reward = self._calculate_termination_reward(self.best_fitness_so_far, self.current_iterations_passed)
+            info['status'] = "terminate_action_chosen"
+            # No change in iterations_passed or best_fitness from this action itself.
+
+        # Ensure current_iterations_passed does not exceed total_max_iterations (clamp)
+        # and check for termination if budget was exhausted by the explore/exploit action
         if self.current_iterations_passed >= self.total_max_iterations:
-            terminated = True # Ensure termination if budget exhausted or exceeded
+            terminated = True # Mark as terminated if budget exhausted
+            self.current_iterations_passed = self.total_max_iterations # Clamp
+            if info.get('status') not in ["terminate_action_chosen", "terminated_max_iterations_reached_before_action"]:
+                 # If terminated due to budget overrun by explore/exploit, the reward for that action stands.
+                 # We might add a specific note to info.
+                info['status'] = info.get('status', '') + "_max_iterations_reached_after_action"
+
 
         observation = self._get_obs()
-        info = {} # Additional info (optional)
+        # info already populated
         
         return observation, reward, terminated, truncated, info
 
-    def _calculate_reward(self, old_fitness, new_fitness, iterations_spent):
-        # TODO: Implement reward logic based on plan (fitness improvement, efficiency)
-        # Example:
-        # improvement = old_fitness - new_fitness # Assuming minimization
-        # if improvement > 0:
-        #    return improvement * 10 # Reward improvement
-        # else:
-        #    return -1 # Small penalty for no improvement or cost of iteration
-        return 0 # Placeholder
+    def _calculate_reward(self, old_fitness, new_fitness, iterations_spent_for_action):
+        improvement = old_fitness - new_fitness  # Assuming minimization
+        
+        # Cost for iterations spent
+        iteration_cost_penalty = iterations_spent_for_action * self.REWARD_ITERATION_COST_FACTOR
 
-    def _calculate_termination_reward(self, final_fitness, iterations_used):
-        # TODO: Reward for terminating, possibly based on quality vs. budget used
-        # Example:
-        # reward = 1.0 / final_fitness if final_fitness > 0 else 1000 # Higher for better fitness
-        # reward -= (iterations_used / self.total_max_iterations) * 0.1 # Penalty for using budget
-        return 0 # Placeholder
+        if improvement > 0:
+            # Reward for improvement, scaled
+            improvement_reward = improvement * self.REWARD_IMPROVEMENT_FACTOR
+            # Optional: Add efficiency bonus here if desired
+            # efficiency_bonus = (improvement / iterations_spent_for_action) * self.SOME_EFFICIENCY_FACTOR if iterations_spent_for_action > 0 else 0
+            return improvement_reward + iteration_cost_penalty
+        else:
+            # Penalty for no improvement or worsening step
+            return self.REWARD_NO_IMPROVEMENT_PENALTY_STEP + iteration_cost_penalty
+
+    def _calculate_termination_reward(self, final_fitness, total_iterations_used_episode):
+        # Reward based on final fitness (higher is better for 1/(1+fitness) type scaling)
+        # Add 1 to fitness to prevent division by zero if fitness can be 0 and handle negative fitness if possible.
+        # Assuming fitness is non-negative.
+        fitness_component = self.TERMINATION_REWARD_BASE_FITNESS_FACTOR / (1 + max(0, final_fitness))
+
+        # Penalty based on normalized budget usage
+        budget_usage_ratio = total_iterations_used_episode / self.total_max_iterations
+        budget_penalty_component = budget_usage_ratio * self.TERMINATION_REWARD_BUDGET_USAGE_PENALTY_FACTOR
+        
+        return fitness_component - budget_penalty_component
 
     def render(self):
         # TODO: Implement visualization if needed (e.g., plot fitness over iterations)
