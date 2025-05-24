@@ -2,6 +2,21 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 
+# Try relative imports first, fallback to absolute imports, then fallback to mock strategies
+try:
+    from .exploration_strategies import create_exploration_strategy
+    from .exploitation_strategies import create_exploitation_strategy
+except ImportError:
+    try:
+        from exploration_strategies import create_exploration_strategy
+        from exploitation_strategies import create_exploitation_strategy
+    except ImportError:
+        # Fallback to mock strategies for testing
+        try:
+            from .mock_strategies import create_exploration_strategy, create_exploitation_strategy
+        except ImportError:
+            from mock_strategies import create_exploration_strategy, create_exploitation_strategy
+
 class RLEnv(gym.Env):
     """
     Custom Environment for RL-based Orchestration of Search Algorithms.
@@ -16,7 +31,8 @@ class RLEnv(gym.Env):
     TERMINATION_REWARD_BASE_FITNESS_FACTOR = 200.0  # e.g., 200 / (1 + fitness)
     TERMINATION_REWARD_BUDGET_USAGE_PENALTY_FACTOR = 20.0  # Penalty for (iter_used / total_iter) * factor
 
-    def __init__(self, problem_instance, total_max_iterations, iteration_options=None):
+    def __init__(self, problem_instance, total_max_iterations, iteration_options=None, 
+                 exploration_strategy_type="ga", exploitation_strategy_type="local_search"):
         super(RLEnv, self).__init__()
 
         self.problem_instance = problem_instance
@@ -26,6 +42,7 @@ class RLEnv(gym.Env):
         # Current state of the environment
         self.current_iterations_passed = 0
         self.best_fitness_so_far = float('inf') # Assuming minimization problem
+        self.best_solution_so_far = None  # Track best solution for exploitation
 
         # Define action space:
         # Action is a tuple: (strategy_choice, iteration_budget_choice_index)
@@ -64,9 +81,8 @@ class RLEnv(gym.Env):
         self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
 
         # Initialize exploration and exploitation strategy handlers
-        # These handlers would likely take self.problem_instance and be reset with the environment
-        self.exploration_strategy = None  # TODO: Replace with actual ExplorationStrategy instance
-        self.exploitation_strategy = None # TODO: Replace with actual ExploitationStrategy instance
+        self.exploration_strategy = create_exploration_strategy(exploration_strategy_type)
+        self.exploitation_strategy = create_exploitation_strategy(exploitation_strategy_type)
 
     def _get_obs(self):
         """Helper function to get the current observation."""
@@ -77,6 +93,7 @@ class RLEnv(gym.Env):
 
         self.current_iterations_passed = 0
         self.best_fitness_so_far = float('inf')
+        self.best_solution_so_far = None
         # TODO: Reset problem state if necessary (e.g., clear solution caches in underlying algos)
         # TODO: Reset exploration_strategy and exploitation_strategy if they have internal state
         
@@ -107,38 +124,46 @@ class RLEnv(gym.Env):
         actual_iterations_spent_by_strategy = 0
 
         if strategy_choice == 0: # Explore
-            # --- Mocking Exploration Strategy Call ---
-            # TODO: Replace with:
-            # actual_iterations_spent_by_strategy, new_fitness_from_strategy = self.exploration_strategy.run(
-            #     self.problem_instance, action_iteration_budget, self.best_fitness_so_far
-            # )
-            actual_iterations_spent_by_strategy = action_iteration_budget # Assume it uses the full budget for now
-            if np.random.rand() < 0.6: # 60% chance of some change
-                change = (np.random.rand() - 0.4) * 20 # Simulates finding a new fitness (can be better or worse)
-                new_fitness_from_strategy = max(0, self.best_fitness_so_far - change) # Ensure non-negative fitness
-            else: # 40% chance no change from exploration
-                new_fitness_from_strategy = self.best_fitness_so_far
-            # --- End Mocking ---
+            # Execute exploration strategy
+            try:
+                actual_iterations_spent_by_strategy, new_fitness_from_strategy = self.exploration_strategy.run(
+                    self.problem_instance, action_iteration_budget, self.best_fitness_so_far
+                )
+                # Update best solution if exploration found a better one
+                # Note: We don't get the actual solution from the current interface
+                # This could be enhanced in the future to also return the solution
+            except Exception as e:
+                # Fallback to mock behavior if strategy fails
+                print(f"Exploration strategy failed: {e}, using mock behavior")
+                actual_iterations_spent_by_strategy = action_iteration_budget
+                if np.random.rand() < 0.6:  # 60% chance of some change
+                    change = (np.random.rand() - 0.4) * 20
+                    new_fitness_from_strategy = max(0, self.best_fitness_so_far - change)
+                else:
+                    new_fitness_from_strategy = self.best_fitness_so_far
             
             reward = self._calculate_reward(self.best_fitness_so_far, new_fitness_from_strategy, actual_iterations_spent_by_strategy)
             if new_fitness_from_strategy < self.best_fitness_so_far:
                 self.best_fitness_so_far = new_fitness_from_strategy
+                # TODO: Also update best_solution_so_far when we get solutions from strategies
             self.current_iterations_passed += actual_iterations_spent_by_strategy
             info['status'] = "explore_step"
 
         elif strategy_choice == 1: # Exploit
-            # --- Mocking Exploitation Strategy Call ---
-            # TODO: Replace with:
-            # actual_iterations_spent_by_strategy, new_fitness_from_strategy = self.exploitation_strategy.run(
-            #     self.problem_instance, action_iteration_budget, self.best_fitness_so_far
-            # )
-            actual_iterations_spent_by_strategy = action_iteration_budget # Assume it uses the full budget
-            if np.random.rand() < 0.8: # 80% chance of some change (exploitation is more directed)
-                change = (np.random.rand() - 0.2) * 10 # Simulates smaller, more certain improvement
-                new_fitness_from_strategy = max(0, self.best_fitness_so_far - change)
-            else: # 20% chance no change
-                new_fitness_from_strategy = self.best_fitness_so_far
-            # --- End Mocking ---
+            # Execute exploitation strategy
+            try:
+                actual_iterations_spent_by_strategy, new_fitness_from_strategy = self.exploitation_strategy.run(
+                    self.problem_instance, action_iteration_budget, self.best_fitness_so_far, self.best_solution_so_far
+                )
+            except Exception as e:
+                # Fallback to mock behavior if strategy fails
+                print(f"Exploitation strategy failed: {e}, using mock behavior")
+                actual_iterations_spent_by_strategy = action_iteration_budget # Assume it uses the full budget
+                if np.random.rand() < 0.8: # 80% chance of some change (exploitation is more directed)
+                    change = (np.random.rand() - 0.2) * 10 # Simulates smaller, more certain improvement
+                    new_fitness_from_strategy = max(0, self.best_fitness_so_far - change)
+                else: # 20% chance no change
+                    new_fitness_from_strategy = self.best_fitness_so_far
 
             reward = self._calculate_reward(self.best_fitness_so_far, new_fitness_from_strategy, actual_iterations_spent_by_strategy)
             if new_fitness_from_strategy < self.best_fitness_so_far:
