@@ -1,0 +1,11 @@
+.idea
+# Python bytecode files
+__pycache__/
+*.py[cod]
+*$py.class
+# COMMIT_CONVENTION.md
+# REFACTORING_PLAN.md
+# Image files
+*.png
+# Markdown files
+*.md
