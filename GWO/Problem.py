@@ -37,16 +37,36 @@ class GWO_TSPProblem(BaseProblem):
         # Implementation for fitness evaluation
         return self.calculate_path_distance(position)
 
+    def evaluate(self, solution):
+        # Implementation for solution evaluation (required by Solution class)
+        return self.fitness(solution.representation)
+
     def calculate_path_distance(self, path):
         # Implementation for calculating path distance
         distance = 0
         # Convert path to numpy array if it isn't already
-        path = np.array(path)
+        path = np.array(path, dtype=int)
         # Close the loop by adding first city to end
         path_for_distance = np.append(path, path[0])
+        weights = self.cities_graph.get_weights()
         for i in range(len(path_for_distance) - 1):
             # Convert 1-based indices to 0-based for array access
-            city1 = path_for_distance[i] - 1
-            city2 = path_for_distance[i + 1] - 1
-            distance += self.cities_graph.get_weights()[city1][city2]
+            city1 = int(path_for_distance[i]) - 1
+            city2 = int(path_for_distance[i + 1]) - 1
+            distance += weights[city1][city2]
         return distance
+
+    def get_initial_population(self, population_size):
+        """Generate initial population for GWO algorithm."""
+        from Core.problem import Solution
+        population = []
+
+        for _ in range(population_size):
+            # Create random permutation for TSP, ensuring city 1 is first
+            remaining_cities = np.random.permutation(range(2, self.dim + 1))  # Cities 2 to dim
+            route = np.concatenate([[1], remaining_cities])  # Start with city 1
+            solution = Solution(route, self)
+            solution.evaluate()
+            population.append(solution)
+
+        return population
