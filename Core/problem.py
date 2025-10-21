@@ -1,13 +1,18 @@
 import abc
+from itertools import count
 from typing import Any, Dict, Optional
 import numpy as np # Import numpy for potential array comparison
 
 class Solution:
     """Represents a potential solution to the optimization problem."""
-    def __init__(self, representation: Any, problem: 'ProblemInterface'):
+    _id_counter = count()
+
+    def __init__(self, representation: Any, problem: 'ProblemInterface', *, solution_id: Optional[int] = None):
         self.representation = representation
         self.problem = problem
         self.fitness: Optional[float] = None
+        # Assign a stable identifier so downstream components can track individuals cheaply.
+        self.id: int = int(next(self._id_counter) if solution_id is None else solution_id)
 
     def evaluate(self):
         """Calculates and stores the fitness of this solution."""
@@ -15,10 +20,16 @@ class Solution:
             self.fitness = self.problem.evaluate(self)
         return self.fitness
 
-    def copy(self):
-        """Creates a deep copy of this solution."""
+    def copy(self, *, preserve_id: bool = True):
+        """Creates a deep copy of this solution.
+
+        Args:
+            preserve_id: When True (default), the cloned solution keeps the same `id`.
+                Set to False if the copy represents a genuinely new individual.
+        """
         import copy
-        new_solution = Solution(copy.deepcopy(self.representation), self.problem)
+        new_id = self.id if preserve_id else None
+        new_solution = Solution(copy.deepcopy(self.representation), self.problem, solution_id=new_id)
         new_solution.fitness = self.fitness
         return new_solution
 
