@@ -61,6 +61,15 @@ class SearchAlgorithm(abc.ABC):
         """
         return self.best_solution
 
+    # --- Compatibility shims for observation interfaces ---
+    def get_population(self) -> List[Solution]:
+        """Return the current population (compat with RL observers)."""
+        return self.population
+
+    def get_best(self) -> Optional[Solution]:
+        """Return best-so-far (compat name)."""
+        return self.get_best_solution()
+
     # Optional: Add methods for convergence checks or state reporting
     # def is_converged(self, max_iterations: int, desired_fitness: float) -> bool: pass
     # def get_state(self) -> Dict[str, Any]: pass
