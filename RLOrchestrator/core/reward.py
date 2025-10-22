@@ -69,8 +69,19 @@ class RewardComputer:
         normalized_improvement = float(np.clip(improvement / self._fitness_range, -1.0, 1.0))
         solution_quality = 1.0 - normalized_best  # higher is better
 
-        reward = 0.0
+        if action == 1:
+            return self._compute_switch_reward(
+                phase=phase,
+                normalized_improvement=normalized_improvement,
+                solution_quality=solution_quality,
+                success_rate=success_rate,
+                stagnation=stagnation,
+                frontier_improved=frontier_improved,
+                budget_ratio=budget_ratio,
+                terminated=terminated,
+            )
 
+        reward = 0.0
         # --- Phase-specific shaping ---
         if phase == "exploration":
             reward += self.w["exploration_improvement"] * frontier_improved
@@ -84,21 +95,6 @@ class RewardComputer:
             reward += self.w["exploitation_quality"] * (solution_quality - 0.5)
             reward -= self.w["exploitation_stagnation"] * stagnation
 
-        # --- Phase transition shaping ---
-        if action == 1 and phase == "exploration":
-            readiness = 0.5 * stagnation + 0.5 * max(0.0, 0.5 - success_rate)
-            reward += self.w["switch_to_exploitation"] * readiness
-            too_early = max(0.0, 0.3 - stagnation)
-            reward -= self.w["early_switch_penalty"] * too_early
-            too_late = max(0.0, budget_ratio - 0.9)
-            reward -= self.w["late_switch_penalty"] * too_late
-        elif action == 1 and phase == "exploitation":
-            readiness = 0.6 * stagnation + 0.4 * budget_ratio
-            reward += self.w["terminate_timing"] * readiness
-            reward += self.w["terminate_quality"] * solution_quality
-            reward -= self.w["early_termination_penalty"] * max(0.0, 0.5 - budget_ratio)
-            reward -= self.w["bad_solution_penalty"] * max(0.0, 0.4 - solution_quality)
-
         # --- Efficiency penalties ---
         if action == 0:
             if normalized_improvement <= 0.0 and stagnation > 0.7:
@@ -110,3 +106,80 @@ class RewardComputer:
                 reward -= self.w["budget_overuse_penalty"] * (budget_ratio - 0.99)
 
         return float(np.clip(reward, self._clip_min, self._clip_max))
+
+    def _compute_switch_reward(
+        self,
+        *,
+        phase: str,
+        normalized_improvement: float,
+        solution_quality: float,
+        success_rate: float,
+        stagnation: float,
+        frontier_improved: float,
+        budget_ratio: float,
+        terminated: bool,
+    ) -> float:
+        """
+        Dedicated reward logic for action == 1 (phase change / termination).
+
+        Goals:
+        - Reward well-timed switches/terminations.
+        - Strongly penalize premature decisions.
+        - Strongly penalize wasting the decision budget.
+        - Do not clip severe penalties so the agent learns the cost.
+        """
+        # Encourage switches only after exploration has stalled and success has dropped.
+        if phase == "exploration":
+            readiness = 0.7 * stagnation + 0.3 * max(0.0, 0.6 - success_rate)
+            reward = 0.0
+
+            # Positive credit when readiness comfortably exceeds the threshold.
+            readiness_threshold = 0.45
+            readiness_gap = readiness - readiness_threshold
+            if readiness_gap >= 0.0:
+                reward += 4.0 * readiness_gap
+                reward += 1.5 * max(0.0, solution_quality - 0.5)
+                reward += 1.0 * max(0.0, frontier_improved - 0.5)
+            else:
+                # Hard penalty for premature switching.
+                reward -= 8.0 * (-readiness_gap)
+
+            # Penalize budget waste from switching too late.
+            if budget_ratio > 0.9:
+                reward -= 6.0 * (budget_ratio - 0.9 + 0.02)
+
+            # Discourage switching when recent improvement is negative.
+            if normalized_improvement < 0.0:
+                reward += 0.5 * normalized_improvement
+
+            return reward
+
+        # Termination decision during exploitation.
+        reward = 0.0
+        quality_threshold = 0.6
+        budget_min_threshold = 0.55
+
+        if solution_quality >= quality_threshold:
+            reward += 5.0 * (solution_quality - quality_threshold)
+            reward += 2.0 * max(0.0, normalized_improvement)
+        else:
+            reward -= 9.0 * (quality_threshold - solution_quality)
+
+        if budget_ratio < budget_min_threshold:
+            # Severe penalty for early termination.
+            reward -= 7.0 * (budget_min_threshold - budget_ratio)
+        else:
+            reward += 2.5 * (budget_ratio - budget_min_threshold)
+
+        if budget_ratio > 0.97:
+            # Hard penalty for running the clock down.
+            reward -= 6.5 * (budget_ratio - 0.97 + 0.03)
+
+        if normalized_improvement < 0.0:
+            reward -= 2.5 * abs(normalized_improvement)
+
+        if not terminated:
+            # Termination action should have ended the episode.
+            reward -= 3.0
+
+        return reward
