@@ -13,6 +13,9 @@ class Solution:
         self.fitness: Optional[float] = None
         # Assign a stable identifier so downstream components can track individuals cheaply.
         self.id: int = int(next(self._id_counter) if solution_id is None else solution_id)
+        # Cache for incremental updates (to be set by problem.evaluate if supported)
+        self._cached_total_value: Optional[float] = None
+        self._cached_total_weight: Optional[float] = None
 
     def evaluate(self):
         """Calculates and stores the fitness of this solution."""
@@ -31,6 +34,8 @@ class Solution:
         new_id = self.id if preserve_id else None
         new_solution = Solution(copy.deepcopy(self.representation), self.problem, solution_id=new_id)
         new_solution.fitness = self.fitness
+        new_solution._cached_total_value = self._cached_total_value
+        new_solution._cached_total_weight = self._cached_total_weight
         return new_solution
 
     def __lt__(self, other: 'Solution') -> bool:
