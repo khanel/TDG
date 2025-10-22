@@ -19,11 +19,15 @@ class Orchestrator:
         problem: ProblemInterface,
         exploration_solver: SearchAlgorithm,
         exploitation_solver: SearchAlgorithm,
+        *,
+        start_phase: Phase = "exploration",
     ):
         self.problem = problem
         self.exploration_solver = exploration_solver
         self.exploitation_solver = exploitation_solver
-        self.phase: Phase = "exploration"
+        if start_phase not in ("exploration", "exploitation"):
+            raise ValueError(f"Invalid start phase: {start_phase}")
+        self.phase: Phase = start_phase
         self._best_solution: Optional[Solution] = None
 
     def get_phase(self) -> Phase:
@@ -43,12 +47,7 @@ class Orchestrator:
         if self.phase == "exploitation":
             return
         if seeds is None:
-            # Try get_population(), else read attribute directly
-            if hasattr(self.exploration_solver, "get_population"):
-                pop = self.exploration_solver.get_population()
-            else:
-                pop = getattr(self.exploration_solver, "population", [])
-            # Push the full exploration population into exploitation
+            pop = self.exploration_solver.get_population()
             seeds = [s for s in pop if s is not None]
         # Seed exploitation by replacing its population; then refresh its best
         self.exploitation_solver.population = [s.copy() for s in seeds]
@@ -56,6 +55,7 @@ class Orchestrator:
         if hasattr(self.exploitation_solver, "_update_best_solution"):
             self.exploitation_solver._update_best_solution()
         self.phase = "exploitation"
+        self._update_best()
 
     def get_current_solver(self):
         """Return the active solver."""

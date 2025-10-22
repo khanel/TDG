@@ -23,19 +23,66 @@ Performance notes:
 
 ## Structure
 
-- `core/`: Orchestrator wrapper, observation, reward, and utilities (uses root Core APIs).
-- `solvers/`: Registry for external solver classes (no implementations here).
-- `problems/`: Adapters for specific problems (TSP, Knapsack).
-- `rl/`: RL environment and training/inference scripts.
+- `core/`: Orchestrator wrapper, observation, reward, and utilities (problem-agnostic).
+- `tsp/`: TSP adapter, solvers (`map_elites`, `pso`), and RL entry points (`rl/train.py`, `rl/evaluate.py`).
+- `maxcut/`: Max-Cut adapter, solvers (`explorer`, `local_search`), and RL entry points (`rl/train.py`, `rl/evaluate.py`).
+- `knapsack/`: Knapsack adapter, solvers (`explorer`, `local_search`), and RL entry points (`rl/train.py`, `rl/evaluate.py`).
+- `knapsack/`: Knapsack adapter.
+- `problems/registry.py`: Lightweight registry that maps problem names to adapters from the per-problem packages (kept for compatibility).
+- `solvers/`: Registry for registering additional exploration/exploitation algorithms; default registrations import the implementations from the per-problem packages.
+- `rl/environment.py`: Problem-agnostic Gymnasium environment used by all training scripts.
 
 ## Usage
 
-1. Register external solvers (Core-compatible `SearchAlgorithm` classes) in `solvers/registry.py`.
-2. Use problem adapters (implementing `Core.problem.ProblemInterface`) from `problems/registry.py`.
-3. Train RL policy with `rl/training/train.py`.
-4. Solve problems with `rl/inference/solver.py`.
+Problem-specific training and evaluation scripts live alongside each adapter:
+
+```bash
+# Train on TSP (random instance regenerated each episode; `--tsp-num-cities` accepts ranges like 20-50)
+python -m RLOrchestrator.tsp.rl.train \
+  --total-timesteps 200000 \
+  --tsp-num-cities 40-80 \
+  --tsp-grid-size 150 \
+  --progress-bar
+
+# Evaluate a trained TSP policy and save route/timeline plots
+python -m RLOrchestrator.tsp.rl.evaluate \
+  --model-path ppo_tsp.zip \
+  --episodes 10 \
+  --output-dir outputs/tsp_eval
+
+# Train on Max-Cut with random Erdős–Rényi graphs
+python -m RLOrchestrator.maxcut.rl.train \
+  --total-timesteps 150000 \
+  --n-nodes 128 \
+  --edge-probability 0.35 \
+  --progress-bar
+
+# Evaluate a Max-Cut policy (plots partition and fitness timeline)
+python -m RLOrchestrator.maxcut.rl.evaluate \
+  --model-path ppo_maxcut.zip \
+  --episodes 5 \
+  --output-dir outputs/maxcut_eval
+
+# Train on Knapsack (random instance regenerated each episode unless arrays provided)
+python -m RLOrchestrator.knapsack.rl.train \
+  --total-timesteps 120000 \
+  --n-items 60-120 \
+  --value-range 1 200 \
+  --weight-range 1 60 \
+  --capacity-ratio 0.45 \
+  --progress-bar
+
+# Evaluate a Knapsack policy (plots selected items and fitness timeline)
+python -m RLOrchestrator.knapsack.rl.evaluate \
+  --model-path ppo_knapsack.zip \
+  --episodes 10 \
+  --output-dir outputs/knapsack_eval
+```
+
+Both the TSP and Max-Cut adapters regenerate a fresh random instance at the beginning of every episode whenever no explicit coordinates/weight matrix is supplied.
 
 ## Extending
 
-- Add new solvers by implementing `Core.search_algorithm.SearchAlgorithm` and registering.
-- Add new problems by creating adapters implementing `Core.problem.ProblemInterface`.
+- Implement a new adapter under `RLOrchestrator/<problem>/adapter.py` and register it in `problems/registry.py`.
+- Add exploration/exploitation solvers in `RLOrchestrator/<problem>/solvers/` and register them via `solvers/registry.py`.
+- Create problem-specific RL entry points under `RLOrchestrator/<problem>/rl/` that build on the shared environment.

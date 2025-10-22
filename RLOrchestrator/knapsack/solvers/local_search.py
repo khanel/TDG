@@ -1,0 +1,68 @@
+"""Local search exploitation solver for Knapsack."""
+
+from __future__ import annotations
+
+from typing import List, Optional
+
+import numpy as np
+
+from Core.problem import ProblemInterface, Solution
+from Core.search_algorithm import SearchAlgorithm
+
+
+class KnapsackLocalSearch(SearchAlgorithm):
+    """Greedy bit-flip hill climbing with stochastic escapes."""
+
+    def __init__(
+        self,
+        problem: ProblemInterface,
+        population_size: int = 16,
+        *,
+        moves_per_step: int = 8,
+        escape_probability: float = 0.05,
+        seed: Optional[int] = None,
+    ):
+        if not hasattr(problem, "knapsack_problem"):
+            raise ValueError("KnapsackLocalSearch expects a KnapsackAdapter exposing `knapsack_problem`.")
+        super().__init__(problem, population_size)
+        self.moves_per_step = max(1, int(moves_per_step))
+        self.escape_probability = float(np.clip(escape_probability, 0.0, 1.0))
+        self.rng = np.random.default_rng(seed)
+
+    def initialize(self):
+        super().initialize()
+        self._ensure_evaluated(self.population)
+
+    def step(self):
+        self._ensure_evaluated(self.population)
+        updated_population: List[Solution] = []
+
+        for parent in self.population:
+            best = parent.copy(preserve_id=False)
+            best.evaluate()
+            mask = np.asarray(best.representation, dtype=int)
+
+            for _ in range(self.moves_per_step):
+                idx = int(self.rng.integers(mask.size))
+                candidate_mask = mask.copy()
+                candidate_mask[idx] = 1 - candidate_mask[idx]
+                candidate_mask = np.asarray(self.problem.repair_mask(candidate_mask.tolist()), dtype=int)
+                candidate = Solution(candidate_mask.tolist(), self.problem)
+                candidate.evaluate()
+                improved = candidate.fitness is not None and best.fitness is not None and candidate.fitness < best.fitness
+                if improved or self.rng.random() < self.escape_probability:
+                    best = candidate
+                    mask = candidate_mask
+
+            updated_population.append(best)
+
+        updated_population.sort(key=lambda s: s.fitness if s.fitness is not None else float("inf"))
+        self.population = [sol.copy(preserve_id=False) for sol in updated_population[: self.population_size]]
+        self._update_best_solution()
+        self.iteration += 1
+
+    @staticmethod
+    def _ensure_evaluated(population: List[Solution]) -> None:
+        for sol in population:
+            if sol.fitness is None:
+                sol.evaluate()
