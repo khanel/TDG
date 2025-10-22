@@ -30,6 +30,7 @@ class RLEnvironment(gym.Env):
         self.max_search_steps = int(max_search_steps) if max_search_steps is not None else None
         self.decision_count = 0
         self.search_step_count = 0
+        self._last_observation: Optional[np.ndarray] = None
         self.action_space = gym.spaces.Discrete(2)  # 0=continue, 1=switch phase
         # Observation vector (7):
         # [phase_is_exploitation, normalized_best_fitness, frontier_improvement_flag,
@@ -71,14 +72,18 @@ class RLEnvironment(gym.Env):
                 self.orchestrator._update_best()
         if hasattr(self, "obs_comp") and hasattr(self.obs_comp, "reset"):
             self.obs_comp.reset()
-        return self._observe(), {}
+        obs = self._observe()
+        self._last_observation = obs.copy()
+        return obs, {}
 
     def step(self, action: int):
         phase = self.orchestrator.get_phase()
         prev_best = self.orchestrator.get_best_solution()
         prev_fit = prev_best.fitness if prev_best else float("inf")
+        prev_observation = self._last_observation
 
         terminated = False
+        truncated = False
         if action == 1:
             if phase == "exploration":
                 self.orchestrator.switch_to_exploitation()
@@ -95,24 +100,27 @@ class RLEnvironment(gym.Env):
                 steps_run += 1
                 self.search_step_count += 1
                 if self.max_search_steps is not None and self.search_step_count >= self.max_search_steps:
-                    terminated = True
+                    truncated = True
                     break
             curr_best = self.orchestrator.get_best_solution()
             curr_fit = curr_best.fitness if curr_best else float("inf")
             improvement = prev_fit - curr_fit if (prev_fit != float("inf") and curr_fit != float("inf")) else 0.0
 
         self.decision_count += 1
-        done = terminated or self.decision_count >= self.max_decision_steps
+        if not terminated and self.decision_count >= self.max_decision_steps:
+            truncated = True
 
         obs = self._observe()
+        self._last_observation = obs.copy()
         reward = self.reward_comp.compute(
             action=action,
             phase=phase,
             improvement=improvement,
             terminated=terminated,
             observation=obs,
+            prev_observation=prev_observation,
         )
-        return obs, reward, done, False, {}
+        return obs, reward, terminated, truncated, {}
 
     def _observe(self):
         solver = self.orchestrator.get_current_solver()

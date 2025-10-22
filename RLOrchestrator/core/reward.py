@@ -11,8 +11,7 @@ class RewardComputer:
     """Phase-aware reward shaping for exploration → exploitation search."""
 
     def __init__(self, problem_bounds: dict, *, clip_range: tuple[float, float] = (-1.0, 1.0)):
-        self.lower_bound = float(problem_bounds.get("lower_bound", 0.0))
-        self.upper_bound = float(problem_bounds.get("upper_bound", 1.0))
+        self.lower_bound, self.upper_bound = self._extract_bounds(problem_bounds)
         lo, hi = clip_range
         if lo > hi:
             lo, hi = hi, lo
@@ -47,6 +46,7 @@ class RewardComputer:
         improvement: float,
         terminated: bool,
         observation: np.ndarray,
+        prev_observation: Optional[np.ndarray] = None,
     ) -> float:
         """
         Compute a shaped reward after the solver has advanced.
@@ -59,12 +59,15 @@ class RewardComputer:
             observation: Post-transition observation vector (length 7 as defined in ObservationComputer).
         """
         obs = np.asarray(observation, dtype=float)
-        normalized_best = float(np.clip(obs[1], 0.0, 1.0))
-        frontier_improved = float(np.clip(obs[2], 0.0, 1.0))
-        success_rate = float(np.clip(obs[3], 0.0, 1.0))
+        prev_obs = np.asarray(prev_observation, dtype=float) if prev_observation is not None else obs
+        base_obs = prev_obs if action == 1 else obs
+
+        normalized_best = float(np.clip(base_obs[1], 0.0, 1.0))
+        frontier_improved = float(np.clip(base_obs[2], 0.0, 1.0))
+        success_rate = float(np.clip(base_obs[3], 0.0, 1.0))
         elite_entropy = float(np.clip(obs[4], 0.0, 1.0))
-        stagnation = float(np.clip(obs[5], 0.0, 1.0))
-        budget_ratio = float(np.clip(obs[6], 0.0, 1.0))
+        stagnation = float(np.clip(base_obs[5], 0.0, 1.0))
+        budget_ratio = float(np.clip(base_obs[6], 0.0, 1.0))
 
         normalized_improvement = float(np.clip(improvement / self._fitness_range, -1.0, 1.0))
         solution_quality = 1.0 - normalized_best  # higher is better
@@ -183,3 +186,23 @@ class RewardComputer:
             reward -= 3.0
 
         return reward
+
+    @staticmethod
+    def _extract_bounds(meta: dict) -> tuple[float, float]:
+        if not isinstance(meta, dict):
+            return 0.0, 1.0
+        keys = [
+            ("lower_bound", "upper_bound"),
+            ("fitness_lower_bound", "fitness_upper_bound"),
+            ("fitness_min", "fitness_max"),
+        ]
+        for lo_key, hi_key in keys:
+            if lo_key in meta and hi_key in meta:
+                try:
+                    lb = float(meta[lo_key])
+                    ub = float(meta[hi_key])
+                except Exception:
+                    continue
+                if np.isfinite(lb) and np.isfinite(ub) and ub > lb:
+                    return lb, ub
+        return 0.0, 1.0
