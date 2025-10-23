@@ -89,6 +89,10 @@ class MapElites(SearchAlgorithm):
         if current is None or better(fitness, current.fitness):
             self.archive[key] = Elite(x, fitness, bd)
 
+    def get_population(self) -> list[Solution]:
+        """Return archive solutions as a list of Solution objects."""
+        return [Elite(elite.x, elite.fitness, elite.bd) for elite in self.archive.values()]
+
     def archive_items(self) -> Iterable[Tuple[Tuple, Elite]]:
         """Return iterator over (key, elite) pairs."""
         return self.archive.items()
