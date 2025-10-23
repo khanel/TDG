@@ -167,6 +167,40 @@ class SimulatedAnnealing(SearchAlgorithm):
         if self.temperature < self.final_temperature:
             self.temperature = self.final_temperature
 
+    def ingest_seeds(self, seeds: list[Solution]) -> None:
+        """Reset the annealer to start from externally supplied solutions."""
+        if not seeds:
+            return
+
+        seeded = []
+        for sol in seeds:
+            if sol is None:
+                continue
+            clone = sol.copy(preserve_id=False)
+            if clone.fitness is None:
+                clone.evaluate()
+            seeded.append(clone)
+
+        if not seeded:
+            return
+
+        seeded.sort(key=lambda s: s.fitness if s.fitness is not None else float("inf"))
+
+        best = seeded[0]
+        self.current_solution = best.copy(preserve_id=False)
+        self.population = [self.current_solution]
+        for sol in seeded[1: self.population_size]:
+            self.population.append(sol.copy(preserve_id=False))
+
+        while len(self.population) < self.population_size:
+            self.population.append(best.copy(preserve_id=False))
+
+        self.population = self.population[: self.population_size]
+        self.best_solution = best.copy()
+        self.best_solution.fitness = best.fitness
+        self.iteration = 0
+        self.temperature = self.initial_temperature
+
     def is_cooled(self) -> bool:
         """
         Checks if the temperature has reached the final temperature.
