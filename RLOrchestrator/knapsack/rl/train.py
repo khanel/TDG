@@ -14,6 +14,7 @@ from ...rl.environment import RLEnvironment
 from ...knapsack.adapter import KnapsackAdapter
 from ...knapsack.solvers import KnapsackRandomExplorer, KnapsackLocalSearch
 from ...rl.callbacks import PeriodicBestCheckpoint
+from ...core.utils import parse_int_range
 
 
 def _load_array(path: Optional[str]) -> Optional[np.ndarray]:
@@ -53,8 +54,8 @@ def main():
     parser.add_argument("--total-timesteps", type=int, default=100000)
     parser.add_argument("--exploration-population", type=int, default=10)
     parser.add_argument("--exploitation-population", type=int, default=6)
-    parser.add_argument("--max-decisions", type=int, default=200)
-    parser.add_argument("--search-steps-per-decision", type=int, default=1)
+    parser.add_argument("--max-decisions", type=str, default="200")
+    parser.add_argument("--search-steps-per-decision", type=str, default="1")
     parser.add_argument("--max-search-steps", type=int, default=None)
     parser.add_argument("--reward-clip", type=float, default=1.0)
     parser.add_argument("--ppo-learning-rate", type=float, default=3e-4)
@@ -84,6 +85,9 @@ def main():
             raise ValueError("values and weights must have matching shape")
         if capacity is None:
             raise ValueError("capacity must be provided when supplying custom values/weights")
+
+    max_decision_spec = parse_int_range(args.max_decisions, min_value=1, label="max-decisions")
+    search_step_spec = parse_int_range(args.search_steps_per_decision, min_value=1, label="search-steps-per-decision")
 
     def make_env_fn(rank: int):
         def _init():
@@ -124,8 +128,8 @@ def main():
             orchestrator._update_best()
             env = RLEnvironment(
                 orchestrator,
-                max_decision_steps=args.max_decisions,
-                search_steps_per_decision=args.search_steps_per_decision,
+                max_decision_steps=max_decision_spec,
+                search_steps_per_decision=search_step_spec,
                 max_search_steps=args.max_search_steps,
                 reward_clip=args.reward_clip,
             )

@@ -49,11 +49,14 @@ class Orchestrator:
         if seeds is None:
             pop = self.exploration_solver.get_population()
             seeds = [s for s in pop if s is not None]
-        # Seed exploitation by replacing its population; then refresh its best
-        self.exploitation_solver.population = [s.copy() for s in seeds]
-        # Ensure fitness is evaluated and best is updated if helper exists
-        if hasattr(self.exploitation_solver, "_update_best_solution"):
-            self.exploitation_solver._update_best_solution()
+        if hasattr(self.exploitation_solver, "ingest_seeds"):
+            self.exploitation_solver.ingest_seeds(seeds)
+        else:
+            # Seed exploitation by replacing its population; then refresh its best
+            self.exploitation_solver.population = [s.copy() for s in seeds]
+            # Ensure fitness is evaluated and best is updated if helper exists
+            if hasattr(self.exploitation_solver, "_update_best_solution"):
+                self.exploitation_solver._update_best_solution()
         self.phase = "exploitation"
         self._update_best()
 

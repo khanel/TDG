@@ -14,8 +14,9 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from ...core.orchestrator import Orchestrator
 from ...rl.environment import RLEnvironment
 from ...rl.callbacks import PeriodicBestCheckpoint
+from ...core.utils import parse_int_range
 from ...tsp.adapter import TSPAdapter
-from ...tsp.solvers import TSPMapElites, TSPParticleSwarm
+from ...tsp.solvers import TSPMapElites, TSPSimulatedAnnealing
 
 
 def _load_array(path: Optional[str]) -> Optional[np.ndarray]:
@@ -59,8 +60,8 @@ def main():
     parser.add_argument("--total-timesteps", type=int, default=100000)
     parser.add_argument("--exploration-population", type=int, default=32)
     parser.add_argument("--exploitation-population", type=int, default=8)
-    parser.add_argument("--max-decisions", type=int, default=200)
-    parser.add_argument("--search-steps-per-decision", type=int, default=1)
+    parser.add_argument("--max-decisions", type=str, default="200")
+    parser.add_argument("--search-steps-per-decision", type=str, default="1")
     parser.add_argument("--max-search-steps", type=int, default=None)
     parser.add_argument("--reward-clip", type=float, default=1.0)
     parser.add_argument("--ppo-learning-rate", type=float, default=3e-4)
@@ -80,6 +81,9 @@ def main():
     dist_arr = _load_array(args.tsp_distance_file)
     num_cities_range = _parse_num_cities_spec(args.tsp_num_cities)
 
+    max_decision_spec = parse_int_range(args.max_decisions, min_value=1, label="max-decisions")
+    search_step_spec = parse_int_range(args.search_steps_per_decision, min_value=1, label="search-steps-per-decision")
+
     def make_env_fn(rank: int):
         def _init():
             seed = args.tsp_seed + rank if args.tsp_seed is not None else None
@@ -97,13 +101,14 @@ def main():
                 random_injection_rate=0.15,
                 seed=seed,
             )
-            exploitation = TSPParticleSwarm(
+            exploitation = TSPSimulatedAnnealing(
                 problem,
                 population_size=max(1, args.exploitation_population),
-                omega=0.6,
-                c1=1.8,
-                c2=1.6,
-                vmax=0.5,
+                initial_temperature=100.0,
+                final_temperature=1e-3,
+                cooling_rate=0.99,
+                moves_per_temp=50,
+                max_iterations=250000,
                 seed=seed,
             )
             for solver in (exploration, exploitation):
@@ -113,8 +118,8 @@ def main():
             orchestrator._update_best()
             env = RLEnvironment(
                 orchestrator,
-                max_decision_steps=args.max_decisions,
-                search_steps_per_decision=args.search_steps_per_decision,
+                max_decision_steps=max_decision_spec,
+                search_steps_per_decision=search_step_spec,
                 max_search_steps=args.max_search_steps,
                 reward_clip=args.reward_clip,
             )
@@ -147,7 +152,7 @@ def main():
         model = PPO.load(checkpoint_path, env=env)
         reset_flag = False
     else:
-        model = PPO("MlpPolicy", env, verbose=1, learning_rate=args.ppo_learning_rate)
+        model = PPO("MlpPolicy",env, learning_rate=args.ppo_learning_rate)
         reset_flag = True
 
     callbacks = []
@@ -164,7 +169,7 @@ def main():
     )
     callback = CallbackList(callbacks)
 
-    model.learn(total_timesteps=args.total_timesteps, reset_num_timesteps=reset_flag, callback=callback)
+    model.learn(total_timesteps=args.total_timesteps, reset_num_timesteps=reset_flag, callback=callback, progress_bar=True)
 
     model.save(output_path)
     env.close()

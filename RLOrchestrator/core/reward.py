@@ -18,25 +18,6 @@ class RewardComputer:
         self._clip_min = float(lo)
         self._clip_max = float(hi)
         self._fitness_range = max(1e-9, self.upper_bound - self.lower_bound)
-        # Weight configuration balances exploration diversity, exploitation gains, and efficiency.
-        self.w = {
-            "exploration_improvement": 0.25,
-            "exploration_success": 0.20,
-            "exploration_entropy": 0.20,
-            "exploration_stagnation": 0.30,
-            "exploitation_progress": 0.40,
-            "exploitation_quality": 0.30,
-            "exploitation_stagnation": 0.25,
-            "switch_to_exploitation": 0.40,
-            "early_switch_penalty": 0.30,
-            "late_switch_penalty": 0.20,
-            "terminate_quality": 0.40,
-            "terminate_timing": 0.30,
-            "early_termination_penalty": 0.30,
-            "bad_solution_penalty": 0.30,
-            "budget_overuse_penalty": 0.30,
-            "idle_penalty": 0.20,
-        }
 
     def compute(
         self,
@@ -47,145 +28,114 @@ class RewardComputer:
         terminated: bool,
         observation: np.ndarray,
         prev_observation: Optional[np.ndarray] = None,
+        steps_run: int = 0,
+        switched: bool = False,
+        phase_after: Optional[str] = None,
     ) -> float:
         """
-        Compute a shaped reward after the solver has advanced.
+        Compute reward after the solver has advanced.
 
         Args:
-            action: Agent action taken before this transition (0=continue, 1=advance phase).
-            phase: Phase prior to taking the action ("exploration" or "exploitation").
-            improvement: Fitness delta (prev_best - curr_best).
-            terminated: Whether the episode ended after this transition.
-            observation: Post-transition observation vector (length 7 as defined in ObservationComputer).
+            action: Agent action taken before this transition.
+            phase: Phase prior to taking the action.
+            improvement: Best-fitness delta observed during the step (prev - curr).
+            terminated: Whether the environment terminated after the action.
+            observation: Observation after stepping.
+            prev_observation: Observation before the action.
+            steps_run: Number of solver steps executed this decision.
+            switched: Whether the action triggered exploration → exploitation.
+            phase_after: Phase after the transition (if still running).
         """
         obs = np.asarray(observation, dtype=float)
         prev_obs = np.asarray(prev_observation, dtype=float) if prev_observation is not None else obs
-        base_obs = prev_obs if action == 1 else obs
-
-        normalized_best = float(np.clip(base_obs[1], 0.0, 1.0))
-        frontier_improved = float(np.clip(base_obs[2], 0.0, 1.0))
-        success_rate = float(np.clip(base_obs[3], 0.0, 1.0))
-        elite_entropy = float(np.clip(obs[4], 0.0, 1.0))
-        stagnation = float(np.clip(base_obs[5], 0.0, 1.0))
-        budget_ratio = float(np.clip(base_obs[6], 0.0, 1.0))
-
         normalized_improvement = float(np.clip(improvement / self._fitness_range, -1.0, 1.0))
-        solution_quality = 1.0 - normalized_best  # higher is better
 
-        if action == 1:
-            return self._compute_switch_reward(
-                phase=phase,
-                normalized_improvement=normalized_improvement,
-                solution_quality=solution_quality,
-                success_rate=success_rate,
-                stagnation=stagnation,
-                frontier_improved=frontier_improved,
-                budget_ratio=budget_ratio,
-                terminated=terminated,
-            )
+        if action == 0:
+            return self._score_continue(prev_obs, obs, normalized_improvement, steps_run, phase)
+
+        if phase == "exploration" and switched:
+            return self._score_switch(prev_obs, normalized_improvement)
+        # phase == "exploitation" termination (or unexpected switch failure)
+        return self._score_terminate(prev_obs, obs, normalized_improvement, terminated, phase_after)
+
+    def _score_continue(
+        self,
+        prev_obs: np.ndarray,
+        curr_obs: np.ndarray,
+        normalized_improvement: float,
+        steps_run: int,
+        phase: str,
+    ) -> float:
+        budget = float(np.clip(curr_obs[6], 0.0, 1.0))
+        stagnation = float(np.clip(curr_obs[5], 0.0, 1.0))
+        entropy = float(np.clip(curr_obs[4], 0.0, 1.0))
 
         reward = 0.0
-        # --- Phase-specific shaping ---
-        if phase == "exploration":
-            reward += self.w["exploration_improvement"] * frontier_improved
-            reward += self.w["exploration_success"] * (success_rate - 0.5)
-            reward += self.w["exploration_entropy"] * (elite_entropy - 0.5)
-            reward -= self.w["exploration_stagnation"] * stagnation
-            if action == 0 and normalized_improvement < 0.0:
-                reward += normalized_improvement * 0.1  # discourage regressions while continuing exploration
-        else:  # exploitation
-            reward += self.w["exploitation_progress"] * normalized_improvement
-            reward += self.w["exploitation_quality"] * (solution_quality - 0.5)
-            reward -= self.w["exploitation_stagnation"] * stagnation
 
-        # --- Efficiency penalties ---
-        if action == 0:
-            if normalized_improvement <= 0.0 and stagnation > 0.7:
-                reward -= self.w["idle_penalty"] * stagnation
-            if budget_ratio > 0.98:
-                reward -= self.w["budget_overuse_penalty"] * (budget_ratio - 0.98)
-        else:
-            if budget_ratio > 0.99 and not terminated:
-                reward -= self.w["budget_overuse_penalty"] * (budget_ratio - 0.99)
+        if phase == "exploration":
+            reward += 0.7 * max(normalized_improvement, 0.0)
+            reward -= 0.4 * max(-normalized_improvement, 0.0)
+            reward += 0.3 * (entropy - 0.5)
+            reward -= 0.4 * max(0.0, stagnation - 0.55)
+            reward -= 0.35 * max(0.0, budget - 0.8)
+        else:  # exploitation
+            reward += 0.8 * max(normalized_improvement, 0.0)
+            reward -= 0.6 * max(-normalized_improvement, 0.0)
+            reward -= 0.5 * max(0.0, stagnation - 0.45)
+            reward -= 0.4 * max(0.0, budget - 0.95)
+
+        if steps_run == 0:
+            reward -= 0.2
 
         return float(np.clip(reward, self._clip_min, self._clip_max))
 
-    def _compute_switch_reward(
+    def _score_switch(
         self,
-        *,
-        phase: str,
+        prev_obs: np.ndarray,
         normalized_improvement: float,
-        solution_quality: float,
-        success_rate: float,
-        stagnation: float,
-        frontier_improved: float,
-        budget_ratio: float,
-        terminated: bool,
     ) -> float:
-        """
-        Dedicated reward logic for action == 1 (phase change / termination).
+        budget = float(np.clip(prev_obs[6], 0.0, 1.0))
+        stagnation = float(np.clip(prev_obs[5], 0.0, 1.0))
+        success = float(np.clip(prev_obs[3], 0.0, 1.0))
+        diversity = float(np.clip(prev_obs[4], 0.0, 1.0))
 
-        Goals:
-        - Reward well-timed switches/terminations.
-        - Strongly penalize premature decisions.
-        - Strongly penalize wasting the decision budget.
-        - Do not clip severe penalties so the agent learns the cost.
-        """
-        # Encourage switches only after exploration has stalled and success has dropped.
-        if phase == "exploration":
-            readiness = 0.7 * stagnation + 0.3 * max(0.0, 0.6 - success_rate)
-            reward = 0.0
+        readiness = 0.5 * max(0.0, budget - 0.55) + 0.5 * max(0.0, stagnation - 0.5)
+        readiness += 0.3 * max(0.0, 0.35 - success)
 
-            # Positive credit when readiness comfortably exceeds the threshold.
-            readiness_threshold = 0.45
-            readiness_gap = readiness - readiness_threshold
-            if readiness_gap >= 0.0:
-                reward += 4.0 * readiness_gap
-                reward += 1.5 * max(0.0, solution_quality - 0.5)
-                reward += 1.0 * max(0.0, frontier_improved - 0.5)
-            else:
-                # Hard penalty for premature switching.
-                reward -= 8.0 * (-readiness_gap)
+        penalty = 0.6 * max(0.0, 0.5 - budget)
+        penalty += 0.5 * max(0.0, 0.4 - stagnation)
+        penalty += 0.3 * max(0.0, diversity - 0.65)
+        penalty += 0.4 * max(normalized_improvement, 0.0)
 
-            # Penalize budget waste from switching too late.
-            if budget_ratio > 0.9:
-                reward -= 6.0 * (budget_ratio - 0.9 + 0.02)
+        reward = readiness - penalty
+        reward += 0.3 * max(0.0, -normalized_improvement)
 
-            # Discourage switching when recent improvement is negative.
-            if normalized_improvement < 0.0:
-                reward += 0.5 * normalized_improvement
+        return float(np.clip(reward, self._clip_min, self._clip_max))
 
-            return reward
+    def _score_terminate(
+        self,
+        prev_obs: np.ndarray,
+        curr_obs: np.ndarray,
+        normalized_improvement: float,
+        terminated: bool,
+        phase_after: Optional[str],
+    ) -> float:
+        stagnation_prev = float(np.clip(prev_obs[5], 0.0, 1.0))
+        budget_prev = float(np.clip(prev_obs[6], 0.0, 1.0))
+        readiness = 0.6 * max(0.0, budget_prev - 0.75) + 0.6 * max(0.0, stagnation_prev - 0.5)
+        readiness += 0.4 * max(0.0, -normalized_improvement)
 
-        # Termination decision during exploitation.
-        reward = 0.0
-        quality_threshold = 0.6
-        budget_min_threshold = 0.55
+        penalty = 0.6 * max(0.0, 0.65 - budget_prev)
+        penalty += 0.5 * max(0.0, 0.4 - stagnation_prev)
+        penalty += 0.5 * max(0.0, normalized_improvement)
 
-        if solution_quality >= quality_threshold:
-            reward += 5.0 * (solution_quality - quality_threshold)
-            reward += 2.0 * max(0.0, normalized_improvement)
-        else:
-            reward -= 9.0 * (quality_threshold - solution_quality)
-
-        if budget_ratio < budget_min_threshold:
-            # Severe penalty for early termination.
-            reward -= 7.0 * (budget_min_threshold - budget_ratio)
-        else:
-            reward += 2.5 * (budget_ratio - budget_min_threshold)
-
-        if budget_ratio > 0.97:
-            # Hard penalty for running the clock down.
-            reward -= 6.5 * (budget_ratio - 0.97 + 0.03)
-
-        if normalized_improvement < 0.0:
-            reward -= 2.5 * abs(normalized_improvement)
-
+        reward = readiness - penalty
         if not terminated:
-            # Termination action should have ended the episode.
-            reward -= 3.0
+            reward -= 0.6
+        if phase_after and phase_after != "exploitation":
+            reward -= 0.2
 
-        return reward
+        return float(np.clip(reward, self._clip_min, self._clip_max))
 
     @staticmethod
     def _extract_bounds(meta: dict) -> tuple[float, float]:

@@ -9,6 +9,7 @@ import numpy as np
 from stable_baselines3 import PPO
 
 from ...core.orchestrator import Orchestrator
+from ...core.utils import parse_int_range
 from ...rl.environment import RLEnvironment
 from ...knapsack.adapter import KnapsackAdapter
 from ...knapsack.solvers import KnapsackRandomExplorer, KnapsackLocalSearch
@@ -69,8 +70,8 @@ def main():
     parser.add_argument("--model-path", type=str, default="ppo_knapsack.zip")
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--deterministic", action="store_true", default=False)
-    parser.add_argument("--max-decisions", type=int, default=200)
-    parser.add_argument("--search-steps-per-decision", type=int, default=1)
+    parser.add_argument("--max-decisions", type=str, default="200")
+    parser.add_argument("--search-steps-per-decision", type=str, default="1")
     parser.add_argument("--max-search-steps", type=int, default=None)
     parser.add_argument("--reward-clip", type=float, default=1.0)
     parser.add_argument("--values-file", type=str, default=None)
@@ -118,10 +119,12 @@ def main():
 
     orchestrator = Orchestrator(problem, exploration, exploitation, start_phase="exploration")
     orchestrator._update_best()
+    max_decision_spec = parse_int_range(args.max_decisions, min_value=1, label="max-decisions")
+    search_step_spec = parse_int_range(args.search_steps_per_decision, min_value=1, label="search-steps-per-decision")
     env = RLEnvironment(
         orchestrator,
-        max_decision_steps=args.max_decisions,
-        search_steps_per_decision=args.search_steps_per_decision,
+        max_decision_steps=max_decision_spec,
+        search_steps_per_decision=search_step_spec,
         max_search_steps=args.max_search_steps,
         reward_clip=args.reward_clip,
     )

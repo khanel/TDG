@@ -59,6 +59,8 @@ class TSPParticleSwarm(SearchAlgorithm):
         self.global_best_fitness = float("inf")
         self.population = []
         self.particles = []
+        self.best_solution = None
+        self.iteration = 0
         for _ in range(self.population_size):
             position = self.rng.random(self.num_cities)
             velocity = self.rng.uniform(-self.vmax, self.vmax, size=self.num_cities)
@@ -97,7 +99,7 @@ class TSPParticleSwarm(SearchAlgorithm):
 
     def _solution_from_position(self, position: np.ndarray) -> Solution:
         indices = np.argsort(position)
-        if indices[0] != 0:
-            indices = np.concatenate(([0], indices[indices != 0]))
+        zero_pos = np.where(indices == 0)[0][0]
+        indices = np.roll(indices, -zero_pos)
         tour = (indices + 1).tolist()
         return Solution(tour, self.problem)

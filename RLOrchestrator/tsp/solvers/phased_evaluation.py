@@ -1,5 +1,5 @@
 """
-Evaluation script for trained TSP orchestrator policies.
+Evaluation script for a simple phased search strategy (50% exploration, 50% exploitation).
 """
 
 import argparse
@@ -8,11 +8,8 @@ from typing import Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-from stable_baselines3 import PPO
 
 from ...core.orchestrator import Orchestrator
-from ...core.utils import parse_int_range
-from ...rl.environment import RLEnvironment
 from ...tsp.adapter import TSPAdapter
 from ...tsp.solvers import TSPMapElites, TSPSimulatedAnnealing
 
@@ -71,24 +68,17 @@ def _parse_num_cities_spec(value: str) -> Tuple[int, int]:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str, default="ppo_tsp.zip")
     parser.add_argument("--episodes", type=int, default=1)
-    parser.add_argument("--deterministic", action="store_true", default=False)
-    parser.add_argument("--max-decisions", type=str, default="200")
-    parser.add_argument("--search-steps-per-decision", type=str, default="1")
-    parser.add_argument("--max-search-steps", type=int, default=None)
-    parser.add_argument("--reward-clip", type=float, default=1.0)
+    parser.add_argument("--max-search-steps", type=int, default=200)
     parser.add_argument("--tsp-num-cities", type=str, default="20")
     parser.add_argument("--tsp-grid-size", type=float, default=100.0)
     parser.add_argument("--tsp-seed", type=int, default=42)
     parser.add_argument("--tsp-coords-file", type=str, default=None)
     parser.add_argument("--tsp-distance-file", type=str, default=None)
-    parser.add_argument("--output-dir", type=str, default="evaluation_outputs/tsp")
+    parser.add_argument("--output-dir", type=str, default="evaluation_outputs/tsp_phased")
     parser.add_argument("--route-image", type=str, default="route.png")
     parser.add_argument("--fitness-image", type=str, default="fitness.png")
     args = parser.parse_args()
-
-    model = PPO.load(args.model_path)
 
     coords_arr = _load_array(args.tsp_coords_file)
     dist_arr = _load_array(args.tsp_distance_file)
@@ -102,74 +92,87 @@ def main():
         distance_matrix=dist_arr.tolist() if dist_arr is not None else None,
     )
 
-    exploration = TSPMapElites(
-        problem,
-        population_size=32,
-        bins_per_dim=(16, 16),
-        random_injection_rate=0.15,
-        seed=args.tsp_seed,
-    )
-    exploitation = TSPSimulatedAnnealing(
-        problem,
-        population_size=1,
-        initial_temperature=100.0,
-        final_temperature=1e-3,
-        cooling_rate=0.99,
-        moves_per_temp=50,
-        max_iterations=250000,
-        seed=args.tsp_seed,
-    )
-    for solver in (exploration, exploitation):
-        if hasattr(solver, "initialize"):
-            solver.initialize()
-
-    orchestrator = Orchestrator(problem, exploration, exploitation, start_phase="exploration")
-    orchestrator._update_best()
-    max_decision_spec = parse_int_range(args.max_decisions, min_value=1, label="max-decisions")
-    search_step_spec = parse_int_range(args.search_steps_per_decision, min_value=1, label="search-steps-per-decision")
-    env = RLEnvironment(
-        orchestrator,
-        max_decision_steps=max_decision_spec,
-        search_steps_per_decision=search_step_spec,
-        max_search_steps=args.max_search_steps,
-        reward_clip=args.reward_clip,
-    )
+    exploration_steps = args.max_search_steps // 2
+    exploitation_steps = max(1, args.max_search_steps - exploration_steps)
+    sa_moves_per_temp = 50
+    sa_max_iterations = max(sa_moves_per_temp * exploitation_steps, sa_moves_per_temp)
 
     episodes_info: list[dict] = []
-    returns: list[float] = []
 
     for episode_idx in range(1, max(1, args.episodes) + 1):
-        obs, _ = env.reset()
-        done = False
-        step_idx = 0
-        ep_return = 0.0
+        episode_seed = args.tsp_seed + episode_idx
+
+        problem = TSPAdapter(
+            num_cities=num_cities_range,
+            grid_size=args.tsp_grid_size,
+            seed=episode_seed,
+            coords=coords_arr.tolist() if coords_arr is not None else None,
+            distance_matrix=dist_arr.tolist() if dist_arr is not None else None,
+        )
+
+        exploration = TSPMapElites(
+            problem,
+            population_size=32,
+            bins_per_dim=(16, 16),
+            random_injection_rate=0.15,
+            seed=episode_seed,
+        )
+        exploitation = TSPSimulatedAnnealing(
+            problem,
+            population_size=1,
+            initial_temperature=100.0,  # Higher temperature for more exploration
+            final_temperature=1e-3,
+            cooling_rate=0.99,  # Slower cooling for gradual exploitation
+            moves_per_temp=sa_moves_per_temp,  # More moves per temperature level
+            max_iterations=sa_max_iterations,
+            seed=episode_seed,
+        )
+        for solver in (exploration, exploitation):
+            if hasattr(solver, "initialize"):
+                solver.initialize()
+
+        orchestrator = Orchestrator(problem, exploration, exploitation, start_phase="exploration")
+        orchestrator._update_best()
+
         episode_steps: list[int] = []
         episode_fitness: list[float] = []
-        episode_switch_steps: list[int] = []
         episode_best_solution = None
         episode_best_fitness = float("inf")
 
-        while not done:
-            action, _ = model.predict(obs, deterministic=args.deterministic)
-            if int(action) == 1 and env.orchestrator.get_phase() == "exploration":
-                episode_switch_steps.append(step_idx)
-            obs, reward, terminated, truncated, _ = env.step(int(action))
-            done = terminated or truncated
-            ep_return += reward
-            candidate = env.orchestrator.get_best_solution()
+        # Exploration phase
+        for step_idx in range(exploration_steps):
+            orchestrator.step()
+            candidate = orchestrator.get_best_solution()
             if candidate and candidate.fitness is not None:
                 episode_steps.append(step_idx)
                 episode_fitness.append(candidate.fitness)
                 if candidate.fitness < episode_best_fitness:
                     episode_best_solution = candidate.copy()
                     episode_best_fitness = candidate.fitness
-            step_idx += 1
 
-        returns.append(ep_return)
+        # Switch to exploitation, seeding with the best solution from exploration
+        best_exploration_solution = orchestrator.get_best_solution()
+        if best_exploration_solution:
+            orchestrator.switch_to_exploitation(seeds=[best_exploration_solution])
+        else:
+            orchestrator.switch_to_exploitation()  # Fallback if no solution found
+
+        # Exploitation phase
+        for step_idx in range(exploration_steps, args.max_search_steps):
+            orchestrator.step()
+            candidate = orchestrator.get_best_solution()
+            if candidate and candidate.fitness is not None:
+                episode_steps.append(step_idx)
+                episode_fitness.append(candidate.fitness)
+                if candidate.fitness < episode_best_fitness:
+                    episode_best_solution = candidate.copy()
+                    episode_best_fitness = candidate.fitness
+        
         if episode_best_solution is None:
-            episode_best_solution = env.orchestrator.get_best_solution().copy()
+            episode_best_solution = orchestrator.get_best_solution().copy()
             episode_best_fitness = episode_best_solution.fitness if episode_best_solution else float("inf")
-        coords_snapshot = np.asarray(env.orchestrator.problem.tsp_problem.city_coords, dtype=float).copy()
+
+        coords_snapshot = np.asarray(orchestrator.problem.tsp_problem.city_coords, dtype=float).copy()
         episodes_info.append({
             "index": episode_idx,
             "solution": episode_best_solution,
@@ -177,18 +180,12 @@ def main():
             "coords": coords_snapshot,
             "steps": episode_steps.copy(),
             "history": episode_fitness.copy(),
-            "switch_steps": episode_switch_steps.copy(),
+            "switch_steps": [exploration_steps],
         })
-
-    env.close()
 
     if not episodes_info:
         print("No solution discovered during evaluation.")
         return
-
-    mean_return = float(np.mean(returns)) if returns else 0.0
-    std_return = float(np.std(returns)) if len(returns) > 1 else 0.0
-    print(f"Evaluated {len(returns)} episode(s) | mean return: {mean_return:.3f} ± {std_return:.3f}")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -117,11 +117,13 @@ class TSPMapElites(SearchAlgorithm):
     def _mutate(self, parent: Solution) -> Solution:
         rep = list(parent.representation)
         if len(rep) < 4:
-            i, j = sorted(self.rng.choice(len(rep), size=2, replace=False))
-        else:
-            i, j = sorted(self.rng.choice(range(1, len(rep)), size=2, replace=False))
-        rep[i], rep[j] = rep[j], rep[i]
-        return Solution(rep, self.problem)
+            return parent.copy()
+        
+        i, j = sorted(self.rng.choice(range(1, len(rep)), size=2, replace=False))
+        
+        new_rep = rep[:i] + rep[i:j+1][::-1] + rep[j+1:]
+        
+        return Solution(new_rep, self.problem)
 
     def _refresh_population(self) -> None:
         if not self.archive:

@@ -43,6 +43,18 @@ class PeriodicBestCheckpoint(BaseCallback):
         self._episode_returns: np.ndarray | None = None
         self._episode_count = 0
         self.log_episodes = bool(log_episodes)
+        progress_candidates = [
+            int(np.round(self.total_timesteps * (i / 100.0)))
+            for i in range(1, 101)
+        ]
+        progress_candidates = [p for p in progress_candidates if p > 0]
+        progress_sorted = sorted(set(progress_candidates))
+        if progress_sorted and progress_sorted[-1] != self.total_timesteps:
+            progress_sorted.append(self.total_timesteps)
+        self._progress_thresholds = progress_sorted or [self.total_timesteps]
+        self._next_progress_idx = 0
+        self._segment_returns: list[float] = []
+        self._segment_episode_count = 0
 
     def _init_callback(self) -> None:
         env = self.training_env
@@ -64,10 +76,32 @@ class PeriodicBestCheckpoint(BaseCallback):
                 ep_ret = float(self._episode_returns[idx])
                 self._episode_returns[idx] = 0.0
                 self._episode_count += 1
-                if self.log_episodes or self.verbose > 0:
-                    print(f"Episode {self._episode_count}: reward={ep_ret:.3f} (env {idx})")
                 if ep_ret > self._best_reward:
                     self._best_reward = ep_ret
+                self._segment_returns.append(ep_ret)
+                self._segment_episode_count += 1
+
+        while (
+            self._next_progress_idx < len(self._progress_thresholds)
+            and self.num_timesteps >= self._progress_thresholds[self._next_progress_idx]
+        ):
+            if self.log_episodes or self.verbose > 0:
+                threshold = self._progress_thresholds[self._next_progress_idx]
+                progress_ratio = min(1.0, threshold / max(1, self.total_timesteps))
+                percent = progress_ratio * 100.0
+                if self._segment_episode_count > 0:
+                    mean_return = float(np.mean(self._segment_returns))
+                    print(
+                        f"[progress {percent:5.1f}%] mean episode reward={mean_return:.3f} "
+                        f"({self._segment_episode_count} episodes)"
+                    )
+                else:
+                    print(
+                        f"[progress {percent:5.1f}%] no completed episodes in this interval"
+                    )
+            self._segment_returns.clear()
+            self._segment_episode_count = 0
+            self._next_progress_idx += 1
 
         while (
             self._next_threshold_idx < len(self._thresholds)
@@ -87,3 +121,16 @@ class PeriodicBestCheckpoint(BaseCallback):
         if self.verbose > 0:
             print(f"Saving new best checkpoint to {path} (reward={best_reward:.3f})")
         self.model.save(path)
+
+    def _on_training_end(self) -> None:
+        if not (self.log_episodes or self.verbose > 0):
+            return
+        if self._segment_episode_count <= 0:
+            return
+        progress_ratio = min(1.0, self.num_timesteps / max(1, self.total_timesteps))
+        percent = progress_ratio * 100.0
+        mean_return = float(np.mean(self._segment_returns))
+        print(
+            f"[progress {percent:5.1f}%] mean episode reward={mean_return:.3f} "
+            f"({self._segment_episode_count} episodes)"
+        )
