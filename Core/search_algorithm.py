@@ -29,6 +29,8 @@ class SearchAlgorithm(abc.ABC):
         Sets up the algorithm's initial state, including the population.
         Should be called before starting the search steps.
         """
+        self.iteration = 0
+        self.best_solution = None
         self.population = self.problem.get_initial_population(self.population_size)
         for sol in self.population:
             sol.evaluate() # Ensure initial fitness is calculated
