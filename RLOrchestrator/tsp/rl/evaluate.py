@@ -15,6 +15,7 @@ from ...core.utils import parse_int_range
 from ...rl.environment import RLEnvironment
 from ...tsp.adapter import TSPAdapter
 from ...tsp.solvers import TSPMapElites, TSPSimulatedAnnealing
+from ...rl.eval_logging import EvaluationLogger, StepRecord, EpisodeSummary, DEFAULT_OBS_NAMES
 
 
 def _load_array(path: Optional[str]) -> Optional[np.ndarray]:
@@ -84,6 +85,7 @@ def main():
     parser.add_argument("--tsp-coords-file", type=str, default=None)
     parser.add_argument("--tsp-distance-file", type=str, default=None)
     parser.add_argument("--output-dir", type=str, default="evaluation_outputs/tsp")
+    parser.add_argument("--log-dir", type=str, default=None)
     parser.add_argument("--route-image", type=str, default="route.png")
     parser.add_argument("--fitness-image", type=str, default="fitness.png")
     args = parser.parse_args()
@@ -138,6 +140,15 @@ def main():
     episodes_info: list[dict] = []
     returns: list[float] = []
 
+    log_dir = Path(args.log_dir) if args.log_dir else (Path(args.output_dir) / "logs")
+    logger = EvaluationLogger(log_dir, run_name=None, extra_meta={
+        "problem": "tsp",
+        "model_path": str(args.model_path),
+        "deterministic": bool(args.deterministic),
+        "max_decisions": args.max_decisions,
+        "search_steps_per_decision": args.search_steps_per_decision,
+    })
+
     for episode_idx in range(1, max(1, args.episodes) + 1):
         obs, _ = env.reset()
         done = False
@@ -149,14 +160,43 @@ def main():
         episode_best_solution = None
         episode_best_fitness = float("inf")
 
+        # Per-episode meta snapshot
+        coords_snapshot = np.asarray(env.orchestrator.problem.tsp_problem.city_coords, dtype=float).copy()
+        logger.log_episode_start(episode_idx, meta={
+            "num_cities": int(coords_snapshot.shape[0]),
+        })
+
         while not done:
+            phase_before = env.orchestrator.get_phase()
             action, _ = model.predict(obs, deterministic=args.deterministic)
-            if int(action) == 1 and env.orchestrator.get_phase() == "exploration":
+            if int(action) == 1 and phase_before == "exploration":
                 episode_switch_steps.append(step_idx)
+            prev_best = env.orchestrator.get_best_solution()
+            prev_best_fit = prev_best.fitness if prev_best else None
             obs, reward, terminated, truncated, _ = env.step(int(action))
             done = terminated or truncated
             ep_return += reward
             candidate = env.orchestrator.get_best_solution()
+            phase_after = env.orchestrator.get_phase()
+            improvement = None
+            if prev_best_fit is not None and candidate and candidate.fitness is not None:
+                improvement = float(prev_best_fit - candidate.fitness)
+            # Log step
+            logger.log_step(StepRecord(
+                episode=episode_idx,
+                step=step_idx,
+                phase_before=phase_before,
+                action=int(action),
+                phase_after=phase_after,
+                reward=float(reward),
+                terminated=bool(terminated),
+                truncated=bool(truncated),
+                observation=[float(x) for x in np.asarray(obs, dtype=float)],
+                best_fitness=(float(candidate.fitness) if candidate and candidate.fitness is not None else None),
+                improvement=(float(improvement) if improvement is not None else None),
+                decision_count=int(env.decision_count),
+                search_steps_per_decision=int(env.search_steps_per_decision),
+            ))
             if candidate and candidate.fitness is not None:
                 episode_steps.append(step_idx)
                 episode_fitness.append(candidate.fitness)
@@ -169,7 +209,6 @@ def main():
         if episode_best_solution is None:
             episode_best_solution = env.orchestrator.get_best_solution().copy()
             episode_best_fitness = episode_best_solution.fitness if episode_best_solution else float("inf")
-        coords_snapshot = np.asarray(env.orchestrator.problem.tsp_problem.city_coords, dtype=float).copy()
         episodes_info.append({
             "index": episode_idx,
             "solution": episode_best_solution,
@@ -179,6 +218,13 @@ def main():
             "history": episode_fitness.copy(),
             "switch_steps": episode_switch_steps.copy(),
         })
+        logger.log_episode_end(EpisodeSummary(
+            episode=episode_idx,
+            total_steps=int(step_idx),
+            total_return=float(ep_return),
+            best_fitness=float(episode_best_fitness) if np.isfinite(episode_best_fitness) else None,
+            switch_steps=episode_switch_steps.copy(),
+        ))
 
     env.close()
 
@@ -230,6 +276,7 @@ def main():
             plt.close(fig)
 
     print(f"Saved episode plots to {output_dir}")
+    print(f"Step-by-step evaluation log: {logger.path()}")
 
 
 if __name__ == "__main__":
