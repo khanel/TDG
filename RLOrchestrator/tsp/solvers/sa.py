@@ -63,6 +63,9 @@ class TSPSimulatedAnnealing(SearchAlgorithm):
         self.population = self.sa.population.copy()
         self.best_solution = self.sa.best_solution.copy() if self.sa.best_solution else None
         self.iteration = 0
+        # Prepare distance matrix and embedding support
+        self._refresh_distance_cache()
+        self._update_population_matrix()
 
     def reset(self):
         """Reset the state of the SA solver for a new run."""
@@ -90,6 +93,8 @@ class TSPSimulatedAnnealing(SearchAlgorithm):
         self.population = self.sa.get_population()
         self.best_solution = self.sa.get_best_solution()
         self.iteration += 1
+        # Maintain permutation-aware embedding
+        self._update_population_matrix()
 
     def ingest_seeds(self, seeds: list[Solution]) -> None:
         """Synchronize the internal SA state with externally provided seeds."""
@@ -101,6 +106,8 @@ class TSPSimulatedAnnealing(SearchAlgorithm):
         current_best = self.sa.get_best_solution()
         self.best_solution = current_best.copy() if current_best else None
         self.iteration = self.sa.iteration
+        self._refresh_distance_cache()
+        self._update_population_matrix()
 
     def _tsp_neighbor(self, sol: Solution) -> Solution:
         """TSP-specific neighbor function: 2-opt or swap moves."""
@@ -125,3 +132,38 @@ class TSPSimulatedAnnealing(SearchAlgorithm):
             new_tour[0], new_tour[idx] = new_tour[idx], new_tour[0]
 
         return Solution(new_tour, self.problem)
+
+    # --- Observation support: permutation-aware embedding ----------------
+    def _refresh_distance_cache(self):
+        tsp = self.problem.tsp_problem
+        dm = np.asarray(tsp.cities_graph.get_weights(), dtype=float)
+        self._distance_matrix = dm
+        self._num_cities = dm.shape[0]
+        max_edge = float(np.max(dm)) if dm.size else 1.0
+        self._hist_bins = np.linspace(0.0, max(1e-9, max_edge), num=17)
+
+    def _tour_edge_lengths(self, rep: list[int]) -> np.ndarray:
+        idx = [i - 1 for i in rep]
+        idx.append(idx[0])
+        dm = self._distance_matrix
+        edges = [dm[idx[i], idx[i+1]] for i in range(self._num_cities)]
+        return np.asarray(edges, dtype=float)
+
+    def _tour_hist_vector(self, rep: list[int]) -> np.ndarray:
+        edges = self._tour_edge_lengths(rep)
+        hist, _ = np.histogram(edges, bins=self._hist_bins, density=False)
+        hist = hist.astype(float)
+        total = hist.sum()
+        if total > 0:
+            hist /= total
+        return hist.astype(np.float32)
+
+    def _update_population_matrix(self) -> None:
+        try:
+            if not self.population:
+                self._population_matrix = None
+                return
+            feats = [self._tour_hist_vector(list(sol.representation)) for sol in self.population]
+            self._population_matrix = np.stack(feats, axis=0)
+        except Exception:
+            self._population_matrix = None

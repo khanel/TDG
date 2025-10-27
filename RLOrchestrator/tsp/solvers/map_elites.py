@@ -51,6 +51,8 @@ class TSPMapElites(SearchAlgorithm):
             self._try_insert(sol)
         self._refresh_population()
         self._update_best_solution()
+        # Build permutation-aware population embedding for observers
+        self._update_population_matrix()
 
     def step(self):
         if not self.archive:
@@ -66,6 +68,8 @@ class TSPMapElites(SearchAlgorithm):
         self._refresh_population()
         self._update_best_solution()
         self.iteration += 1
+        # Maintain permutation-aware embedding
+        self._update_population_matrix()
 
     # Helpers -----------------------------------------------------------
     def _refresh_distance_cache(self):
@@ -73,6 +77,8 @@ class TSPMapElites(SearchAlgorithm):
         self.distance_matrix = np.asarray(tsp.cities_graph.get_weights(), dtype=float)
         self.num_cities = self.distance_matrix.shape[0]
         self.max_edge = float(np.max(self.distance_matrix)) if self.distance_matrix.size else 1.0
+        # Fixed histogram bin edges for consistent features
+        self._hist_bins = np.linspace(0.0, max(1e-9, self.max_edge), num=17)
 
     @staticmethod
     def _evaluate_if_needed(sol: Solution) -> None:
@@ -132,3 +138,32 @@ class TSPMapElites(SearchAlgorithm):
         self.population = [sol.copy(preserve_id=False) for sol in elites[: self.population_size]]
         if not self.population:
             self.population = [self.problem.get_initial_solution()]
+        # Update embedding when population changes
+        self._update_population_matrix()
+
+    # --- Observation support: permutation-aware embedding ----------------
+    def _tour_edge_lengths(self, rep: list[int]) -> np.ndarray:
+        idx = [i - 1 for i in rep]
+        idx.append(idx[0])
+        dm = self.distance_matrix
+        edges = [dm[idx[i], idx[i+1]] for i in range(self.num_cities)]
+        return np.asarray(edges, dtype=float)
+
+    def _tour_hist_vector(self, rep: list[int]) -> np.ndarray:
+        edges = self._tour_edge_lengths(rep)
+        hist, _ = np.histogram(edges, bins=self._hist_bins, density=False)
+        hist = hist.astype(float)
+        total = hist.sum()
+        if total > 0:
+            hist /= total
+        return hist.astype(np.float32)
+
+    def _update_population_matrix(self) -> None:
+        try:
+            if not self.population:
+                self._population_matrix = None
+                return
+            feats = [self._tour_hist_vector(list(sol.representation)) for sol in self.population]
+            self._population_matrix = np.stack(feats, axis=0)
+        except Exception:
+            self._population_matrix = None
