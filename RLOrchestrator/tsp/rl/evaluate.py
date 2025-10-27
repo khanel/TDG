@@ -88,7 +88,7 @@ def main():
     parser.add_argument("--fitness-image", type=str, default="fitness.png")
     args = parser.parse_args()
 
-    model = PPO.load(args.model_path)
+    model = PPO.load(args.model_path, device='cpu')
 
     coords_arr = _load_array(args.tsp_coords_file)
     dist_arr = _load_array(args.tsp_distance_file)

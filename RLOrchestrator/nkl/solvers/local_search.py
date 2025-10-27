@@ -1,0 +1,90 @@
+"""
+Fully vectorized local search exploitation solver for NKL.
+"""
+
+from __future__ import annotations
+
+from typing import Optional
+
+import numpy as np
+
+from Core.problem import ProblemInterface, Solution
+from Core.search_algorithm import SearchAlgorithm
+
+
+class NKLLocalSearch(SearchAlgorithm):
+    """Vectorized greedy bit-flip hill climbing with stochastic escapes."""
+
+    def __init__(
+        self,
+        problem: ProblemInterface,
+        population_size: int = 16,
+        *,
+        moves_per_step: int = 8,
+        escape_probability: float = 0.05,
+        seed: Optional[int] = None,
+    ):
+        super().__init__(problem, population_size)
+        self.moves_per_step = max(1, int(moves_per_step))
+        self.escape_probability = float(np.clip(escape_probability, 0.0, 1.0))
+        self.rng = np.random.default_rng(seed)
+
+        # Internally, population is a numpy array for performance
+        self._population_matrix: Optional[np.ndarray] = None
+        self._fitness_values: Optional[np.ndarray] = None
+
+    def initialize(self):
+        n = self.problem.get_problem_info()["dimension"]
+        self._population_matrix = self.rng.integers(0, 2, size=(self.population_size, n), dtype=np.int8)
+        self._fitness_values = self.problem.nkl_problem.evaluate_batch(self._population_matrix)
+        self._update_best_solution_from_matrix()
+
+    def step(self):
+        if self._population_matrix is None or self._fitness_values is None:
+            self.initialize()
+
+        n_dims = self._population_matrix.shape[1]
+
+        for _ in range(self.moves_per_step):
+            # --- 1. Create Candidate Solutions (Vectorized) ---
+            # For each solution in the population, pick one random bit to flip
+            indices_to_flip = self.rng.integers(0, n_dims, size=self.population_size)
+            
+            candidate_matrix = self._population_matrix.copy()
+            rows = np.arange(self.population_size)
+            candidate_matrix[rows, indices_to_flip] = 1 - candidate_matrix[rows, indices_to_flip]
+
+            # --- 2. Evaluate Candidates (Batch) ---
+            candidate_fitnesses = self.problem.nkl_problem.evaluate_batch(candidate_matrix)
+
+            # --- 3. Decide Whether to Accept (Vectorized) ---
+            improved_mask = candidate_fitnesses < self._fitness_values
+            escape_mask = self.rng.random(self.population_size) < self.escape_probability
+            accept_mask = improved_mask | escape_mask
+
+            # Update the population and fitnesses where accepted
+            self._population_matrix = np.where(accept_mask[:, np.newaxis], candidate_matrix, self._population_matrix)
+            self._fitness_values = np.where(accept_mask, candidate_fitnesses, self._fitness_values)
+
+        # --- 4. Update Best Solution ---
+        self._update_best_solution_from_matrix()
+        self.iteration += 1
+
+    def _update_best_solution_from_matrix(self):
+        best_idx = np.argmin(self._fitness_values)
+        best_fitness = self._fitness_values[best_idx]
+        if self.best_solution is None or best_fitness < self.best_solution.fitness:
+            best_representation = self._population_matrix[best_idx].tolist()
+            self.best_solution = Solution(best_representation, self.problem)
+            self.best_solution.fitness = best_fitness
+
+    def get_population(self) -> list[Solution]:
+        # This is a compatibility method for the observation computer.
+        # It's inefficient and should be used sparingly.
+        solutions = []
+        if self._population_matrix is not None and self._fitness_values is not None:
+            for rep, fit in zip(self._population_matrix, self._fitness_values):
+                sol = Solution(rep.tolist(), self.problem)
+                sol.fitness = fit
+                solutions.append(sol)
+        return solutions

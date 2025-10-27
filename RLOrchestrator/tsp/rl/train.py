@@ -14,7 +14,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from ...core.orchestrator import Orchestrator
 from ...rl.environment import RLEnvironment
 from ...rl.callbacks import PeriodicBestCheckpoint
-from ...core.utils import parse_int_range
+from ...core.utils import parse_int_range, parse_float_range
 from ...tsp.adapter import TSPAdapter
 from ...tsp.solvers import TSPMapElites, TSPSimulatedAnnealing
 
@@ -152,7 +152,7 @@ def main():
         model = PPO.load(checkpoint_path, env=env)
         reset_flag = False
     else:
-        model = PPO("MlpPolicy",env, learning_rate=args.ppo_learning_rate)
+        model = PPO("MlpPolicy",env, device='cpu', learning_rate=args.ppo_learning_rate)
         reset_flag = True
 
     callbacks = []

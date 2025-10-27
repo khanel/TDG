@@ -75,7 +75,9 @@ class MaxCutAdapter(ProblemInterface):
         return self.maxcut_problem.get_initial_population(population_size)
 
     def get_problem_info(self) -> Dict[str, Any]:
-        return self.maxcut_problem.get_problem_info()
+        info = self.maxcut_problem.get_problem_info()
+        info["problem_type"] = "binary"
+        return info
 
     def get_bounds(self) -> Dict[str, float]:
         return dict(self._bounds)

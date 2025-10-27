@@ -1,22 +1,21 @@
 """
-Knapsack-specific PPO training script.
+NKL-specific PPO training script.
 """
 
 import argparse
 from pathlib import Path
-from typing import Tuple
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CallbackList, ProgressBarCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from ...core.orchestrator import Orchestrator
-from ...core.utils import parse_int_range, parse_float_range
+from ...core.utils import parse_int_range
 from ...rl.callbacks import PeriodicBestCheckpoint
 from ...rl.environment import RLEnvironment
-from ..adapter import KnapsackAdapter
-from ..solvers.explorer import KnapsackRandomExplorer
-from ..solvers.local_search import KnapsackLocalSearch
+from ..adapter import NKLAdapter
+from ..solvers.explorer import NKLRandomExplorer
+from ..solvers.local_search import NKLLocalSearch
 
 
 def main():
@@ -33,39 +32,34 @@ def main():
     parser.add_argument("--num-envs", type=int, default=1)
     parser.add_argument("--vec-env", choices=["auto", "dummy", "subproc"], default="auto")
     parser.add_argument("--load-model", type=str, default=None)
-    parser.add_argument("--model-output", type=str, default="ppo_knapsack")
-    parser.add_argument("--knapsack-num-items", type=str, default="50")
-    parser.add_argument("--knapsack-value-range", type=str, default="1.0-100.0")
-    parser.add_argument("--knapsack-weight-range", type=str, default="1.0-50.0")
-    parser.add_argument("--knapsack-capacity-ratio", type=float, default=0.5)
-    parser.add_argument("--knapsack-seed", type=int, default=42)
+    parser.add_argument("--model-output", type=str, default="ppo_nkl")
+    parser.add_argument("--nkl-n-items", type=str, default="100")
+    parser.add_argument("--nkl-k-interactions", type=str, default="5")
+    parser.add_argument("--nkl-seed", type=int, default=42)
     args = parser.parse_args()
 
-    num_items_range = parse_int_range(args.knapsack_num_items, min_value=1, label="knapsack-num-items")
-    value_range = parse_float_range(args.knapsack_value_range, label="knapsack-value-range")
-    weight_range = parse_float_range(args.knapsack_weight_range, label="knapsack-weight-range")
+    n_items_range = parse_int_range(args.nkl_n_items, min_value=2, label="nkl-n-items")
+    k_interactions_range = parse_int_range(args.nkl_k_interactions, min_value=0, label="nkl-k-interactions")
 
     max_decision_spec = parse_int_range(args.max_decisions, min_value=1, label="max-decisions")
     search_step_spec = parse_int_range(args.search_steps_per_decision, min_value=1, label="search-steps-per-decision")
 
     def make_env_fn(rank: int):
         def _init():
-            seed = args.knapsack_seed + rank if args.knapsack_seed is not None else None
-            problem = KnapsackAdapter(
-                n_items=num_items_range,
-                value_range=value_range,
-                weight_range=weight_range,
-                capacity_ratio=args.knapsack_capacity_ratio,
+            seed = args.nkl_seed + rank if args.nkl_seed is not None else None
+            problem = NKLAdapter(
+                n_items=n_items_range,
+                k_interactions=k_interactions_range,
                 seed=seed,
             )
-            exploration = KnapsackRandomExplorer(
+            exploration = NKLRandomExplorer(
                 problem,
                 population_size=max(1, args.exploration_population),
                 flip_probability=0.15,
                 elite_fraction=0.25,
                 seed=seed,
             )
-            exploitation = KnapsackLocalSearch(
+            exploitation = NKLLocalSearch(
                 problem,
                 population_size=max(1, args.exploitation_population),
                 moves_per_step=8,
@@ -113,7 +107,7 @@ def main():
         model = PPO.load(checkpoint_path, env=env)
         reset_flag = False
     else:
-        model = PPO("MlpPolicy", env, device='cpu', learning_rate=args.ppo_learning_rate)
+        model = PPO("MlpPolicy", env, verbose=2, learning_rate=args.ppo_learning_rate)
         reset_flag = True
 
     callbacks = []
@@ -130,7 +124,7 @@ def main():
     )
     callback = CallbackList(callbacks)
 
-    model.learn(total_timesteps=args.total_timesteps, reset_num_timesteps=reset_flag, callback=callback, progress_bar=True)
+    model.learn(total_timesteps=args.total_timesteps,  reset_num_timesteps=reset_flag, callback=callback, progress_bar=True)
 
     model.save(output_path)
     env.close()

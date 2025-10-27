@@ -56,7 +56,9 @@ class TSPAdapter(ProblemInterface):
         return [self.get_initial_solution() for _ in range(size)]
 
     def get_problem_info(self) -> Dict[str, Any]:
-        return self.tsp_problem.get_problem_info()
+        info = self.tsp_problem.get_problem_info()
+        info["problem_type"] = "permutation"
+        return info
 
     def get_bounds(self) -> Dict[str, float]:
         return dict(self._bounds)

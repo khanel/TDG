@@ -47,6 +47,31 @@ def int_range_type(min_value: int, label: str) -> Callable[[str], IntRangeSpec]:
     return _parser
 
 
+def parse_float_range(spec: str, *, label: str) -> Tuple[float, float]:
+    """Parse a float range specification."""
+    raw = (spec or "").strip()
+    if not raw:
+        raise ValueError(f"{label} cannot be empty")
+    parts = [p.strip() for p in re.split(r"[,:-]", raw) if p.strip()]
+    if not parts:
+        raise ValueError(f"Invalid {label} value: {spec!r}")
+    def _coerce(value: str) -> float:
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise ValueError(f"{label} must contain floats: {spec!r}") from exc
+    if len(parts) == 1:
+        val = _coerce(parts[0])
+        return (val, val)
+    if len(parts) != 2:
+        raise ValueError(f"Invalid {label} value: {spec!r}")
+    lo, hi = _coerce(parts[0]), _coerce(parts[1])
+    if lo > hi:
+        lo, hi = hi, lo
+    return (lo, hi)
+
+
+
 def max_steps_config_from_spec(spec: IntRangeSpec, *, randomize_scalar: bool = False, scalar_ratio: float = 0.6) -> Dict[str, Any]:
     """Build environment config entries for max episode steps."""
     if isinstance(spec, tuple):

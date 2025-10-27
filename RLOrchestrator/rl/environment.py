@@ -39,10 +39,10 @@ class RLEnvironment(gym.Env):
         self.search_step_count = 0
         self._last_observation: Optional[np.ndarray] = None
         self.action_space = gym.spaces.Discrete(2)  # 0=continue, 1=switch phase
-        # Observation vector (7):
-        # [phase_is_exploitation, normalized_best_fitness, frontier_improvement_flag,
-        #  frontier_success_rate, elite_turnover_entropy, frontier_stagnation_ratio, budget_used_ratio]
-        self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(7,), dtype=np.float32)
+        # Observation vector (8):
+        # [budget_remaining, normalized_best_fitness, improvement_velocity, stagnation_nonparametric,
+        #  population_concentration, landscape_funnel_proxy, landscape_deceptiveness_proxy, active_phase]
+        self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32)
         # Build normalization meta from problem, preferring explicit bounds if available
         meta = {}
         problem_obj = orchestrator.problem
