@@ -134,11 +134,19 @@ class ObservationComputer:
 
     def _compute_stagnation(self) -> float:
         """Computes stagnation via Mann-Whitney U test; returns 1.0 - p-value."""
-        if len(self.fitness_history) < self.stagnation_window_size * 2:
+        history = list(self.fitness_history)
+        history_len = len(history)
+
+        # Require a minimal amount of history before emitting any stagnation signal.
+        if history_len < max(4, self.stagnation_window_size // 2):
             return 0.0
-        
-        window1 = list(self.fitness_history)[:self.stagnation_window_size]
-        window2 = list(self.fitness_history)[self.stagnation_window_size:]
+
+        window_size = min(self.stagnation_window_size, history_len // 2)
+        if window_size < 2:
+            return 0.0
+
+        window1 = history[:window_size]
+        window2 = history[-window_size:]
 
         # If windows are identical, U-test is meaningless, implies stagnation.
         if np.allclose(window1, window2):

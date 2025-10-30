@@ -53,7 +53,39 @@ class TSPAdapter(ProblemInterface):
         return self.tsp_problem.get_initial_solution()
 
     def get_initial_population(self, size: int) -> List[Solution]:
-        return [self.get_initial_solution() for _ in range(size)]
+        size = max(1, int(size))
+        population: List[Solution] = []
+        seen: set = set()
+
+        # Derive a local RNG so repeated calls remain reproducible but decoupled.
+        if self._rng is not None:
+            local_seed = int(self._rng.integers(0, 2**32 - 1))
+            local_rng = np.random.default_rng(local_seed)
+        else:
+            local_rng = np.random.default_rng()
+
+        attempts = 0
+        max_attempts = size * 8
+        while len(population) < size and attempts < max_attempts:
+            attempts += 1
+            candidate = self._sample_random_solution(local_rng)
+            key = tuple(candidate.representation)
+            if key in seen:
+                continue
+            candidate.evaluate()
+            seen.add(key)
+            population.append(candidate)
+
+        # Fallback: if uniqueness quota not met, fill remaining slots (duplicates tolerated).
+        while len(population) < size:
+            candidate = self.tsp_problem.get_initial_solution()
+            candidate.evaluate()
+            key = tuple(candidate.representation)
+            if key not in seen:
+                seen.add(key)
+            population.append(candidate)
+
+        return population
 
     def get_problem_info(self) -> Dict[str, Any]:
         info = self.tsp_problem.get_problem_info()
@@ -130,3 +162,13 @@ class TSPAdapter(ProblemInterface):
             return int(rng.integers(low, high + 1))
         assert self._num_cities_fixed is not None
         return int(self._num_cities_fixed)
+
+    def _sample_random_solution(self, rng: np.random.Generator) -> Solution:
+        """Generate a random tour with city 1 fixed at the start."""
+        vertices = self.tsp_problem.cities_graph.get_vertices()
+        if len(vertices) <= 1:
+            return self.tsp_problem.get_initial_solution()
+        remaining = np.array(vertices[1:], dtype=int)
+        rng.shuffle(remaining)
+        tour = [vertices[0]] + remaining.tolist()
+        return Solution(representation=tour, problem=self.tsp_problem)
