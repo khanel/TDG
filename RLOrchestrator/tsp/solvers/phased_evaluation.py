@@ -11,7 +11,7 @@ import numpy as np
 
 from ...core.orchestrator import Orchestrator
 from ...tsp.adapter import TSPAdapter
-from ...tsp.solvers import TSPMapElites, TSPSimulatedAnnealing
+from ...tsp.solvers import TSPMapElites, TSPParticleSwarm
 
 
 def _load_array(path: Optional[str]) -> Optional[np.ndarray]:
@@ -94,9 +94,6 @@ def main():
 
     exploration_steps = args.max_search_steps // 2
     exploitation_steps = max(1, args.max_search_steps - exploration_steps)
-    sa_moves_per_temp = 50
-    sa_max_iterations = max(sa_moves_per_temp * exploitation_steps, sa_moves_per_temp)
-
     episodes_info: list[dict] = []
 
     for episode_idx in range(1, max(1, args.episodes) + 1):
@@ -117,14 +114,13 @@ def main():
             random_injection_rate=0.15,
             seed=episode_seed,
         )
-        exploitation = TSPSimulatedAnnealing(
+        exploitation = TSPParticleSwarm(
             problem,
-            population_size=1,
-            initial_temperature=100.0,  # Higher temperature for more exploration
-            final_temperature=1e-3,
-            cooling_rate=0.99,  # Slower cooling for gradual exploitation
-            moves_per_temp=sa_moves_per_temp,  # More moves per temperature level
-            max_iterations=sa_max_iterations,
+            population_size=32,
+            omega=0.7,
+            c1=1.5,
+            c2=1.5,
+            vmax=0.5,
             seed=episode_seed,
         )
         for solver in (exploration, exploitation):

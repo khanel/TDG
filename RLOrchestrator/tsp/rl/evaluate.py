@@ -14,7 +14,7 @@ from ...core.orchestrator import Orchestrator
 from ...core.utils import parse_int_range
 from ...rl.environment import RLEnvironment
 from ...tsp.adapter import TSPAdapter
-from ...tsp.solvers import TSPMapElites, TSPSimulatedAnnealing
+from ...tsp.solvers import TSPMapElites, TSPParticleSwarm
 from ...rl.eval_logging import EvaluationLogger, StepRecord, EpisodeSummary, DEFAULT_OBS_NAMES
 
 
@@ -111,14 +111,13 @@ def main():
         random_injection_rate=0.15,
         seed=args.tsp_seed,
     )
-    exploitation = TSPSimulatedAnnealing(
+    exploitation = TSPParticleSwarm(
         problem,
-        population_size=1,
-        initial_temperature=100.0,
-        final_temperature=1e-3,
-        cooling_rate=0.99,
-        moves_per_temp=50,
-        max_iterations=250000,
+        population_size=32,
+        omega=0.7,
+        c1=1.5,
+        c2=1.5,
+        vmax=0.5,
         seed=args.tsp_seed,
     )
     for solver in (exploration, exploitation):

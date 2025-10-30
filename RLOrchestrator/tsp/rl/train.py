@@ -16,7 +16,7 @@ from ...rl.environment import RLEnvironment
 from ...rl.callbacks import PeriodicBestCheckpoint
 from ...core.utils import parse_int_range, parse_float_range
 from ...tsp.adapter import TSPAdapter
-from ...tsp.solvers import TSPMapElites, TSPSimulatedAnnealing
+from ...tsp.solvers import TSPMapElites, TSPParticleSwarm
 
 
 def _load_array(path: Optional[str]) -> Optional[np.ndarray]:
@@ -101,14 +101,9 @@ def main():
                 random_injection_rate=0.15,
                 seed=seed,
             )
-            exploitation = TSPSimulatedAnnealing(
+            exploitation = TSPParticleSwarm(
                 problem,
                 population_size=max(1, args.exploitation_population),
-                initial_temperature=100.0,
-                final_temperature=1e-3,
-                cooling_rate=0.99,
-                moves_per_temp=50,
-                max_iterations=250000,
                 seed=seed,
             )
             for solver in (exploration, exploitation):
