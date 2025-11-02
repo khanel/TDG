@@ -3,6 +3,7 @@ Problem-agnostic RL environment for phased search.
 Uses orchestrator and registries for flexibility.
 """
 
+import logging
 import math
 from typing import Optional, Tuple
 
