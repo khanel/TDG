@@ -4,6 +4,7 @@ Problem-agnostic, based on solver metrics and phase transitions.
 This version implements a dynamic, multi-objective reward framework.
 """
 
+import logging
 from typing import Optional
 import numpy as np
 
@@ -21,6 +22,7 @@ class RewardComputer:
         *,
         clip_range: tuple[float, float] = (-1.0, 1.0),
         efficiency_penalty: float = 0.01,
+        logger: Optional[logging.Logger] = None,
     ):
         """
         Initializes the reward computer.
@@ -29,6 +31,7 @@ class RewardComputer:
             clip_range: Tuple to clip the final reward.
             efficiency_penalty: Small constant penalty per step to encourage efficiency.
         """
+        self.logger = logger or logging.getLogger(__name__)
         self.lower_bound, self.upper_bound = self._extract_bounds(problem_bounds)
         lo, hi = clip_range
         if lo > hi:
@@ -37,6 +40,11 @@ class RewardComputer:
         self._clip_max = float(hi)
         self._fitness_range = max(1e-9, self.upper_bound - self.lower_bound)
         self.efficiency_penalty = float(efficiency_penalty)
+
+        self.logger.info(f"RewardComputer initialized with:")
+        self.logger.info(f"  problem_bounds: {problem_bounds}")
+        self.logger.info(f"  clip_range: {clip_range}")
+        self.logger.info(f"  efficiency_penalty: {self.efficiency_penalty}")
 
     def compute(
         self,
@@ -107,7 +115,20 @@ class RewardComputer:
             + decision_reward
         )
 
-        return float(np.clip(total_reward, self._clip_min, self._clip_max))
+        final_reward = float(np.clip(total_reward, self._clip_min, self._clip_max))
+
+        self.logger.info(f"Reward calculation:")
+        self.logger.info(f"  - improvement: {improvement:.4f}, normalized: {normalized_improvement:.4f}")
+        self.logger.info(f"  - progress_reward: {progress_reward:.4f}")
+        self.logger.info(f"  - current_concentration: {current_concentration:.4f}, previous_concentration: {previous_concentration:.4f}")
+        self.logger.info(f"  - exploration_reward: {exploration_reward:.4f}")
+        self.logger.info(f"  - decision_reward: {decision_reward:.4f} (action={action}, phase={phase}, switched={switched}, terminated={terminated})")
+        self.logger.info(f"  - budget_remaining: {budget_remaining:.4f}, w_quality: {w_quality:.4f}, w_explore: {w_explore:.4f}")
+        self.logger.info(f"  - efficiency_penalty: {self.efficiency_penalty:.4f}")
+        self.logger.info(f"  - total_reward (before clip): {total_reward:.4f}")
+        self.logger.info(f"  - final_reward (after clip): {final_reward:.4f}")
+
+        return final_reward
 
     @staticmethod
     def _extract_bounds(meta: dict) -> tuple[float, float]:

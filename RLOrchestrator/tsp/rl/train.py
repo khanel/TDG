@@ -87,6 +87,7 @@ def main():
                 search_steps_per_decision=search_step_spec,
                 max_search_steps=args.max_search_steps,
                 reward_clip=args.reward_clip,
+                logger=logger,
             )
             if seed is not None:
                 env.reset(seed=seed)

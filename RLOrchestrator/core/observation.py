@@ -13,6 +13,8 @@ from scipy.stats import mannwhitneyu, spearmanr
 from Core.problem import Solution, ProblemInterface
 
 
+import logging
+
 class ObservationComputer:
     """
     Compute the 8-dimensional Orchestrator-V2 observation vector from a solver state.
@@ -38,6 +40,7 @@ class ObservationComputer:
         stagnation_window_size: int = 20,
         funnel_probe_size: int = 5,
         deception_probe_mutation_strength: float = 0.5,
+        logger: Optional[logging.Logger] = None,
     ):
         """
         Initializes the observation computer.
@@ -48,6 +51,7 @@ class ObservationComputer:
             funnel_probe_size: Number of neighbors to sample for the funnel proxy.
             deception_probe_mutation_strength: Strength of mutation for the deception probe.
         """
+        self.logger = logger or logging.getLogger(__name__)
         # Extract fitness bounds for normalization
         self.fitness_lower_bound, self.fitness_upper_bound = self._extract_bounds(problem_bounds)
         self.fitness_range = max(1e-9, self.fitness_upper_bound - self.fitness_lower_bound)
@@ -64,6 +68,13 @@ class ObservationComputer:
         self.prev_normalized_best_fitness: float = 1.0
         self.improvement_velocity: float = 0.0
         self.fitness_history: deque[float] = deque(maxlen=self.stagnation_window_size * 2)
+
+        self.logger.info(f"ObservationComputer initialized with:")
+        self.logger.info(f"  fitness_bounds: {self.fitness_lower_bound, self.fitness_upper_bound}")
+        self.logger.info(f"  velocity_ewma_alpha: {self.velocity_ewma_alpha}")
+        self.logger.info(f"  stagnation_window_size: {self.stagnation_window_size}")
+        self.logger.info(f"  funnel_probe_size: {self.funnel_probe_size}")
+        self.logger.info(f"  deception_probe_mutation_strength: {self.deception_probe_mutation_strength}")
 
     def reset(self) -> None:
         """Reset all internal state trackers for a new episode."""
@@ -130,6 +141,7 @@ class ObservationComputer:
             deceptiveness,
             active_phase,
         ], dtype=np.float32)
+        self.logger.info(f"Observation computed at step {self.step_index}: {observation}")
         return observation
 
     def _compute_stagnation(self) -> float:

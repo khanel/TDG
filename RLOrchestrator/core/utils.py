@@ -117,28 +117,29 @@ def setup_logging(log_type: str, problem_name: str, log_dir: str = 'logs') -> lo
     """Sets up a logger for a training or evaluation script."""
     log_dir_path = Path(log_dir)
     log_dir_path.mkdir(exist_ok=True)
-    
+
     log_file_name = f"{log_type}_logs.log"
     log_file = log_dir_path / log_file_name
-    
+
     logger = logging.getLogger(f"{log_type}_{problem_name}_logger")
     logger.setLevel(logging.INFO)
-    
+
     # Prevent adding multiple handlers if the logger already exists
     if not logger.handlers:
         # Create handlers
-        file_handler = logging.FileHandler(log_file, mode='a') # Append mode
+        file_handler = logging.FileHandler(log_file, mode='a')  # Append mode
         stream_handler = logging.StreamHandler()
-        
+
         # Create formatters and add it to handlers
-        formatter = logging.Formatter(f'%(asctime)s - %(levelname)s - [{{problem_name}}] - %(message)s'.format(problem_name=problem_name))
+        session_id = int(time.time())
+        formatter = logging.Formatter(f'%(asctime)s - %(levelname)s - [Session: {session_id}]-[Problem: {{problem_name}}] - %(message)s'.format(problem_name=problem_name))
         file_handler.setFormatter(formatter)
         stream_handler.setFormatter(formatter)
-        
+
         # Add handlers to the logger
         logger.addHandler(file_handler)
         logger.addHandler(stream_handler)
-    
+
     return logger
 
 

@@ -26,6 +26,7 @@ class RLEnvironment(gym.Env):
         search_steps_per_decision: int = 1,
         max_search_steps: Optional[int] = None,
         reward_clip: float = 1.0,
+        logger: Optional[logging.Logger] = None,
     ):
         super().__init__()
         self.orchestrator = orchestrator
@@ -39,10 +40,9 @@ class RLEnvironment(gym.Env):
         self.search_step_count = 0
         self._last_observation: Optional[np.ndarray] = None
         self.action_space = gym.spaces.Discrete(2)  # 0=continue, 1=switch phase
-        # Observation vector (8):
-        # [budget_remaining, normalized_best_fitness, improvement_velocity, stagnation_nonparametric,
-        #  population_concentration, landscape_funnel_proxy, landscape_deceptiveness_proxy, active_phase]
         self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32)
+        self.logger = logger or logging.getLogger(__name__)
+
         # Build normalization meta from problem, preferring explicit bounds if available
         meta = {}
         problem_obj = orchestrator.problem
@@ -58,9 +58,15 @@ class RLEnvironment(gym.Env):
                     meta.update(info)
             except Exception:
                 pass
-        self.obs_comp = ObservationComputer(meta)
+        self.obs_comp = ObservationComputer(meta, logger=self.logger)
         clip = abs(float(reward_clip))
-        self.reward_comp = RewardComputer(meta, clip_range=(-clip, clip))
+        self.reward_comp = RewardComputer(meta, clip_range=(-clip, clip), logger=self.logger)
+
+        self.logger.info(f"RLEnvironment initialized with:")
+        self.logger.info(f"  max_decision_steps: {max_decision_steps}")
+        self.logger.info(f"  search_steps_per_decision: {search_steps_per_decision}")
+        self.logger.info(f"  max_search_steps: {max_search_steps}")
+        self.logger.info(f"  reward_clip: {reward_clip}")
 
     def reset(self, *, seed=None, options=None):
         if seed is not None:
@@ -139,13 +145,16 @@ class RLEnvironment(gym.Env):
             switched=switched,
             phase_after=current_phase,
         )
+        self.logger.info(f"Step {self.decision_count}: action={action}, reward={reward:.4f}, terminated={terminated}, truncated={truncated}")
         return obs, reward, terminated, truncated, {}
 
     def _observe(self):
         solver = self.orchestrator.get_current_solver()
         phase = self.orchestrator.get_phase()
         step_ratio = self.decision_count / self.max_decision_steps
-        return self.obs_comp.compute(solver, phase, step_ratio)
+        observation = self.obs_comp.compute(solver, phase, step_ratio)
+        self.logger.info(f"Observation at step {self.decision_count}: {observation}")
+        return observation
 
     def _normalize_range(self, spec: IntRangeSpec | int) -> Tuple[int, int]:
         if isinstance(spec, tuple):

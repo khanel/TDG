@@ -10,7 +10,7 @@ import numpy as np
 from stable_baselines3 import PPO
 
 from ...core.orchestrator import Orchestrator
-from ...core.utils import parse_int_range
+from ...core.utils import parse_int_range, setup_logging
 from ...rl.environment import RLEnvironment
 from ..adapter import NKLAdapter
 from ..solvers.explorer import NKLRandomExplorer
@@ -49,8 +49,11 @@ def main():
     parser.add_argument("--nkl-k-interactions", type=str, default="5")
     parser.add_argument("--nkl-seed", type=int, default=42)
     parser.add_argument("--output-dir", type=str, default="evaluation_outputs/nkl")
+    parser.add_argument("--log-dir", type=str, default=None)
     parser.add_argument("--fitness-image", type=str, default="fitness.png")
     args = parser.parse_args()
+
+    logger = setup_logging('eval', 'nkl', log_dir=args.log_dir if args.log_dir else (Path(args.output_dir) / "logs"))
 
     model = PPO.load(args.model_path, device='cpu')
 
@@ -91,12 +94,14 @@ def main():
         search_steps_per_decision=search_step_spec,
         max_search_steps=args.max_search_steps,
         reward_clip=args.reward_clip,
+        logger=logger,
     )
 
     episodes_info: list[dict] = []
     returns: list[float] = []
 
     for episode_idx in range(1, max(1, args.episodes) + 1):
+        logger.info(f"Episode {episode_idx} started. Problem info: {problem.get_problem_info()}")
         obs, _ = env.reset()
         done = False
         step_idx = 0
@@ -111,16 +116,18 @@ def main():
             action, _ = model.predict(obs, deterministic=args.deterministic)
             if int(action) == 1 and env.orchestrator.get_phase() == "exploration":
                 episode_switch_steps.append(step_idx)
+            prev_best = env.orchestrator.get_best_solution()
+            prev_best_fit = prev_best.fitness if prev_best else None
             obs, reward, terminated, truncated, _ = env.step(int(action))
             done = terminated or truncated
             ep_return += reward
             candidate = env.orchestrator.get_best_solution()
-            if candidate and candidate.fitness is not None:
-                episode_steps.append(step_idx)
-                episode_fitness.append(candidate.fitness)
-                if candidate.fitness < episode_best_fitness:
-                    episode_best_solution = candidate.copy()
-                    episode_best_fitness = candidate.fitness
+            phase_after = env.orchestrator.get_phase()
+            improvement = None
+            if prev_best_fit is not None and candidate and candidate.fitness is not None:
+                improvement = float(prev_best_fit - candidate.fitness)
+            logger.info(f"Step {step_idx}: Phase before: {phase_before}, Action: {int(action)}, Phase after: {phase_after}, Reward: {float(reward):.3f}, Terminated: {bool(terminated)}, Truncated: {bool(truncated)}, Best fitness: {(float(candidate.fitness) if candidate and candidate.fitness is not None else None):.3f}, Improvement: {(float(improvement) if improvement is not None else None):.3f}")
+            logger.info(f"Step {step_idx}: Phase before: {env.orchestrator.get_phase()}, Action: {int(action)}, Phase after: {env.orchestrator.get_phase()}, Reward: {float(reward):.3f}, Terminated: {bool(terminated)}, Truncated: {bool(truncated)}, Best fitness: {(float(candidate.fitness) if candidate and candidate.fitness is not None else None):.3f}, Improvement: {(float(prev_best_fit - candidate.fitness) if prev_best_fit is not None and candidate and candidate.fitness is not None else None):.3f}")
             step_idx += 1
 
         returns.append(ep_return)
@@ -136,7 +143,7 @@ def main():
             "history": episode_fitness.copy(),
             "switch_steps": episode_switch_steps.copy(),
         })
-
+        logger.info(f"Episode {episode_idx} ended. Total steps: {int(step_idx)}, Total return: {float(ep_return):.3f}, Best fitness: {float(episode_best_fitness):.3f}")
     env.close()
 
     if not episodes_info:

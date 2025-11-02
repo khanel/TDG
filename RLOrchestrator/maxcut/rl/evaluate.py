@@ -115,6 +115,7 @@ def main():
         search_steps_per_decision=search_step_spec,
         max_search_steps=args.max_search_steps,
         reward_clip=args.reward_clip,
+        logger=logger,
     )
 
     episodes_info: list[dict] = []
@@ -135,9 +136,7 @@ def main():
 
         # Episode meta snapshot
         n_nodes = int(env.orchestrator.problem.get_problem_info().get("dimension", 0))
-        logger.log_episode_start(episode_idx, meta={
-            "n_nodes": n_nodes,
-        })
+        logger.info(f"Episode {episode_idx} started. Num nodes: {n_nodes}")
 
         while not done:
             phase_before = env.orchestrator.get_phase()
@@ -154,21 +153,7 @@ def main():
             improvement = None
             if prev_best_fit is not None and candidate and candidate.fitness is not None:
                 improvement = float(prev_best_fit - candidate.fitness)
-            logger.log_step(StepRecord(
-                episode=episode_idx,
-                step=step_idx,
-                phase_before=phase_before,
-                action=int(action),
-                phase_after=phase_after,
-                reward=float(reward),
-                terminated=bool(terminated),
-                truncated=bool(truncated),
-                observation=[float(x) for x in np.asarray(obs, dtype=float)],
-                best_fitness=(float(candidate.fitness) if candidate and candidate.fitness is not None else None),
-                improvement=(float(improvement) if improvement is not None else None),
-                decision_count=int(env.decision_count),
-                search_steps_per_decision=int(env.search_steps_per_decision),
-            ))
+            logger.info(f"Step {step_idx}: Phase before: {phase_before}, Action: {int(action)}, Phase after: {phase_after}, Reward: {float(reward):.3f}, Terminated: {bool(terminated)}, Truncated: {bool(truncated)}, Best fitness: {(float(candidate.fitness) if candidate and candidate.fitness is not None else None):.3f}, Improvement: {(float(improvement) if improvement is not None else None):.3f}")
             if candidate and candidate.fitness is not None:
                 episode_steps.append(step_idx)
                 episode_fitness.append(candidate.fitness)
@@ -191,13 +176,7 @@ def main():
             "history": episode_fitness.copy(),
             "switch_steps": episode_switch_steps.copy(),
         })
-        logger.log_episode_end(EpisodeSummary(
-            episode=episode_idx,
-            total_steps=int(step_idx),
-            total_return=float(ep_return),
-            best_fitness=float(episode_best_fitness) if np.isfinite(episode_best_fitness) else None,
-            switch_steps=episode_switch_steps.copy(),
-        ))
+        logger.info(f"Episode {episode_idx} ended. Total steps: {int(step_idx)}, Total return: {float(ep_return):.3f}, Best fitness: {float(episode_best_fitness):.3f}")
 
     env.close()
 
