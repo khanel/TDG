@@ -11,7 +11,7 @@ import numpy as np
 from stable_baselines3 import PPO
 
 from ...core.orchestrator import Orchestrator
-from ...core.utils import parse_int_range
+from ...core.utils import parse_int_range, setup_logging
 from ...rl.environment import RLEnvironment
 from ...maxcut.adapter import MaxCutAdapter
 from ...maxcut.solvers import MaxCutRandomExplorer, MaxCutLocalSearch
@@ -120,14 +120,7 @@ def main():
     episodes_info: list[dict] = []
     returns: list[float] = []
 
-    log_dir = Path(args.log_dir) if args.log_dir else (Path(args.output_dir) / "logs")
-    logger = EvaluationLogger(log_dir, run_name=None, extra_meta={
-        "problem": "maxcut",
-        "model_path": str(args.model_path),
-        "deterministic": bool(args.deterministic),
-        "max_decisions": args.max_decisions,
-        "search_steps_per_decision": args.search_steps_per_decision,
-    })
+    logger = setup_logging('eval', 'maxcut', log_dir=args.log_dir if args.log_dir else (Path(args.output_dir) / "logs"))
 
     for episode_idx in range(1, max(1, args.episodes) + 1):
         obs, _ = env.reset()

@@ -10,7 +10,6 @@ from .registry import (
 )
 
 _DEFAULT_EXPLORATION: Dict[str, str] = {
-    "sa": "SA.SA:SimulatedAnnealing",
     "tsp_map_elites": "RLOrchestrator.tsp.solvers.map_elites:TSPMapElites",
     "noop": "RLOrchestrator.solvers.noop:NoOpSolver",
     "maxcut_random": "RLOrchestrator.maxcut.solvers.explorer:MaxCutRandomExplorer",
@@ -18,7 +17,6 @@ _DEFAULT_EXPLORATION: Dict[str, str] = {
 }
 
 _DEFAULT_EXPLOITATION: Dict[str, str] = {
-    "sa": "SA.SA:SimulatedAnnealing",
     "noop": "RLOrchestrator.solvers.noop:NoOpSolver",
     "tsp_pso": "RLOrchestrator.tsp.solvers.pso:TSPParticleSwarm",
     "pso": "PSO.PSO:ParticleSwarmOptimization",

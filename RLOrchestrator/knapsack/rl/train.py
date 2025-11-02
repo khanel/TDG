@@ -11,15 +11,11 @@ from stable_baselines3.common.callbacks import CallbackList, ProgressBarCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from ...core.orchestrator import Orchestrator
-from ...core.utils import parse_int_range, parse_float_range
+from ...core.utils import parse_int_range, parse_float_range, setup_logging
 from ...rl.callbacks import PeriodicBestCheckpoint
-from ...rl.environment import RLEnvironment
-from ..adapter import KnapsackAdapter
-from ..solvers.explorer import KnapsackRandomExplorer
-from ..solvers.local_search import KnapsackLocalSearch
-
 
 def main():
+    logger = setup_logging('train', 'knapsack')
     parser = argparse.ArgumentParser()
     parser.add_argument("--total-timesteps", type=int, default=100000)
     parser.add_argument("--exploration-population", type=int, default=64)
@@ -41,6 +37,8 @@ def main():
     parser.add_argument("--knapsack-seed", type=int, default=42)
     args = parser.parse_args()
 
+    logger.info(f"Starting Knapsack training with args: {args}")
+
     num_items_range = parse_int_range(args.knapsack_num_items, min_value=1, label="knapsack-num-items")
     value_range = parse_float_range(args.knapsack_value_range, label="knapsack-value-range")
     weight_range = parse_float_range(args.knapsack_weight_range, label="knapsack-weight-range")
@@ -50,6 +48,12 @@ def main():
 
     def make_env_fn(rank: int):
         def _init():
+            from ...core.orchestrator import Orchestrator
+            from ...rl.environment import RLEnvironment
+            from ..adapter import KnapsackAdapter
+            from ..solvers.explorer import KnapsackRandomExplorer
+            from ..solvers.local_search import KnapsackLocalSearch
+
             seed = args.knapsack_seed + rank if args.knapsack_seed is not None else None
             problem = KnapsackAdapter(
                 n_items=num_items_range,
@@ -86,6 +90,14 @@ def main():
             )
             if seed is not None:
                 env.reset(seed=seed)
+
+            logger.info(f"Environment created with the following configuration:")
+            logger.info(f"  Problem: {problem.get_problem_info()}")
+            logger.info(f"  Exploration solver: {exploration.__class__.__name__}")
+            logger.info(f"  Exploitation solver: {exploitation.__class__.__name__}")
+            logger.info(f"  Orchestrator: {orchestrator.__class__.__name__}")
+            logger.info(f"  RL Environment: {env.__class__.__name__}")
+
             return env
 
         return _init
@@ -114,6 +126,7 @@ def main():
         reset_flag = False
     else:
         model = PPO("MlpPolicy", env, device='cpu', learning_rate=args.ppo_learning_rate)
+        logger.info(f"Created new PPO model with learning rate: {args.ppo_learning_rate}")
         reset_flag = True
 
     callbacks = []

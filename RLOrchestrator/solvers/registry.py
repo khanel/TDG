@@ -40,5 +40,5 @@ def get_solver_registry() -> Dict[str, Dict[str, Type[SearchAlgorithm]]]:
 
 # Example registrations (external solvers should call these)
 # register_exploration_solver("map_elites", TSPMapElitesSolver)
-# register_exploitation_solver("sa", SimulatedAnnealing)
+
 # register_exploitation_solver("gwo", GrayWolfOptimization)

@@ -11,14 +11,11 @@ from stable_baselines3.common.callbacks import CallbackList, ProgressBarCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from ...core.orchestrator import Orchestrator
-from ...core.utils import parse_int_range
-from ...rl.environment import RLEnvironment
-from ...maxcut.adapter import MaxCutAdapter
-from ...maxcut.solvers import MaxCutRandomExplorer, MaxCutLocalSearch
+from ...core.utils import parse_int_range, setup_logging
 from ...rl.callbacks import PeriodicBestCheckpoint
 
-
 def main():
+    logger = setup_logging('train', 'maxcut')
     parser = argparse.ArgumentParser()
     parser.add_argument("--total-timesteps", type=int, default=100000)
     parser.add_argument("--exploration-population", type=int, default=64)
@@ -39,6 +36,8 @@ def main():
     parser.add_argument("--ensure-connected", action="store_true", default=False)
     parser.add_argument("--weights-file", type=str, default=None, help="Optional path to weight matrix (.npy/.npz/.txt).")
     args = parser.parse_args()
+
+    logger.info(f"Starting MaxCut training with args: {args}")
 
     weight_matrix = None
     if args.weights_file:
@@ -62,6 +61,11 @@ def main():
 
     def make_env_fn(rank: int):
         def _init():
+            from ...core.orchestrator import Orchestrator
+            from ...rl.environment import RLEnvironment
+            from ...maxcut.adapter import MaxCutAdapter
+            from ...maxcut.solvers import MaxCutRandomExplorer, MaxCutLocalSearch
+
             seed = args.seed + rank if args.seed is not None else None
             problem = MaxCutAdapter(
                 weight_matrix=weight_matrix,
@@ -98,6 +102,14 @@ def main():
             )
             if seed is not None:
                 env.reset(seed=seed)
+
+            logger.info(f"Environment created with the following configuration:")
+            logger.info(f"  Problem: {problem.get_problem_info()}")
+            logger.info(f"  Exploration solver: {exploration.__class__.__name__}")
+            logger.info(f"  Exploitation solver: {exploitation.__class__.__name__}")
+            logger.info(f"  Orchestrator: {orchestrator.__class__.__name__}")
+            logger.info(f"  RL Environment: {env.__class__.__name__}")
+
             return env
 
         return _init
@@ -126,6 +138,7 @@ def main():
         reset_flag = False
     else:
         model = PPO("MlpPolicy", env, verbose=1, learning_rate=args.ppo_learning_rate)
+        logger.info(f"Created new PPO model with learning rate: {args.ppo_learning_rate}")
         reset_flag = True
 
     callbacks = []

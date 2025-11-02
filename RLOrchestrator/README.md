@@ -4,7 +4,7 @@ A clean, extensible framework for RL-controlled orchestration of exploration and
 
 ## Overview
 
-This framework provides abstract interfaces for solvers and problems, allowing easy integration of external algorithms (e.g., MAP-Elites, SA, GWO) for phased search. It separates RL training (policy learning) from inference (solving), and supports any problem via adapters.
+This framework provides abstract interfaces for solvers and problems, allowing easy integration of external algorithms (e.g., MAP-Elites, GWO) for phased search. It separates RL training (policy learning) from inference (solving), and supports any problem via adapters.
 
 ## Observation Space
 

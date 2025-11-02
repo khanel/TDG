@@ -10,7 +10,7 @@ import numpy as np
 from stable_baselines3 import PPO
 
 from ...core.orchestrator import Orchestrator
-from ...core.utils import parse_int_range, parse_float_range
+from ...core.utils import parse_int_range, parse_float_range, setup_logging
 from ...rl.environment import RLEnvironment
 from ..adapter import KnapsackAdapter
 from ..solvers.explorer import KnapsackRandomExplorer
@@ -103,14 +103,7 @@ def main():
     episodes_info: list[dict] = []
     returns: list[float] = []
 
-    log_dir = Path(args.log_dir) if args.log_dir else (Path(args.output_dir) / "logs")
-    logger = EvaluationLogger(log_dir, run_name=None, extra_meta={
-        "problem": "knapsack",
-        "model_path": str(args.model_path),
-        "deterministic": bool(args.deterministic),
-        "max_decisions": args.max_decisions,
-        "search_steps_per_decision": args.search_steps_per_decision,
-    })
+    logger = setup_logging('eval', 'knapsack', log_dir=args.log_dir if args.log_dir else (Path(args.output_dir) / "logs"))
 
     for episode_idx in range(1, max(1, args.episodes) + 1):
         obs, _ = env.reset()
@@ -125,9 +118,7 @@ def main():
 
         # Per-episode meta snapshot
         dim = int(env.orchestrator.problem.get_problem_info().get("dimension", 0))
-        logger.log_episode_start(episode_idx, meta={
-            "dimension": dim,
-        })
+        logger.info(f"Episode {episode_idx} started. Dimension: {dim}")
 
         while not done:
             phase_before = env.orchestrator.get_phase()
@@ -144,21 +135,7 @@ def main():
             improvement = None
             if prev_best_fit is not None and candidate and candidate.fitness is not None:
                 improvement = float(prev_best_fit - candidate.fitness)
-            logger.log_step(StepRecord(
-                episode=episode_idx,
-                step=step_idx,
-                phase_before=phase_before,
-                action=int(action),
-                phase_after=phase_after,
-                reward=float(reward),
-                terminated=bool(terminated),
-                truncated=bool(truncated),
-                observation=[float(x) for x in np.asarray(obs, dtype=float)],
-                best_fitness=(float(candidate.fitness) if candidate and candidate.fitness is not None else None),
-                improvement=(float(improvement) if improvement is not None else None),
-                decision_count=int(env.decision_count),
-                search_steps_per_decision=int(env.search_steps_per_decision),
-            ))
+            logger.info(f"Step {step_idx}: Phase before: {phase_before}, Action: {int(action)}, Phase after: {phase_after}, Reward: {float(reward):.3f}, Terminated: {bool(terminated)}, Truncated: {bool(truncated)}, Best fitness: {(float(candidate.fitness) if candidate and candidate.fitness is not None else None):.3f}, Improvement: {(float(improvement) if improvement is not None else None):.3f}")
             if candidate and candidate.fitness is not None:
                 episode_steps.append(step_idx)
                 episode_fitness.append(candidate.fitness)
@@ -180,13 +157,7 @@ def main():
             "history": episode_fitness.copy(),
             "switch_steps": episode_switch_steps.copy(),
         })
-        logger.log_episode_end(EpisodeSummary(
-            episode=episode_idx,
-            total_steps=int(step_idx),
-            total_return=float(ep_return),
-            best_fitness=float(episode_best_fitness) if np.isfinite(episode_best_fitness) else None,
-            switch_steps=episode_switch_steps.copy(),
-        ))
+        logger.info(f"Episode {episode_idx} ended. Total steps: {int(step_idx)}, Total return: {float(ep_return):.3f}, Best fitness: {float(episode_best_fitness):.3f}")
 
     env.close()
 
