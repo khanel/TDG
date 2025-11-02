@@ -22,7 +22,7 @@ class RewardComputer:
         *,
         clip_range: tuple[float, float] = (-1.0, 1.0),
         efficiency_penalty: float = 0.01,
-        logger: Optional[logging.Logger] = None,
+        logger: logging.Logger,
     ):
         """
         Initializes the reward computer.
@@ -31,7 +31,7 @@ class RewardComputer:
             clip_range: Tuple to clip the final reward.
             efficiency_penalty: Small constant penalty per step to encourage efficiency.
         """
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger
         self.lower_bound, self.upper_bound = self._extract_bounds(problem_bounds)
         lo, hi = clip_range
         if lo > hi:

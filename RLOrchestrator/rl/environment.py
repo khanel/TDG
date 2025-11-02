@@ -27,7 +27,7 @@ class RLEnvironment(gym.Env):
         search_steps_per_decision: int = 1,
         max_search_steps: Optional[int] = None,
         reward_clip: float = 1.0,
-        logger: Optional[logging.Logger] = None,
+        logger: logging.Logger,
     ):
         super().__init__()
         self.orchestrator = orchestrator
@@ -42,7 +42,7 @@ class RLEnvironment(gym.Env):
         self._last_observation: Optional[np.ndarray] = None
         self.action_space = gym.spaces.Discrete(2)  # 0=continue, 1=switch phase
         self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32)
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger
 
         # Build normalization meta from problem, preferring explicit bounds if available
         meta = {}

@@ -40,7 +40,7 @@ class ObservationComputer:
         stagnation_window_size: int = 20,
         funnel_probe_size: int = 5,
         deception_probe_mutation_strength: float = 0.5,
-        logger: Optional[logging.Logger] = None,
+        logger: logging.Logger,
     ):
         """
         Initializes the observation computer.
@@ -51,7 +51,7 @@ class ObservationComputer:
             funnel_probe_size: Number of neighbors to sample for the funnel proxy.
             deception_probe_mutation_strength: Strength of mutation for the deception probe.
         """
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger
         # Extract fitness bounds for normalization
         self.fitness_lower_bound, self.fitness_upper_bound = self._extract_bounds(problem_bounds)
         self.fitness_range = max(1e-9, self.fitness_upper_bound - self.fitness_lower_bound)
