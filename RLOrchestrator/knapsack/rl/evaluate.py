@@ -3,6 +3,7 @@ Evaluation script for trained Knapsack orchestrator policies.
 """
 
 import argparse
+import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -90,6 +91,10 @@ def main():
 
     orchestrator = Orchestrator(problem, exploration, exploitation, start_phase="exploration")
     orchestrator._update_best()
+
+    session_id = int(time.time())
+    logger = setup_logging('eval', 'knapsack', log_dir=(args.log_dir or 'logs'), session_id=session_id)
+
     max_decision_spec = parse_int_range(args.max_decisions, min_value=1, label="max-decisions")
     search_step_spec = parse_int_range(args.search_steps_per_decision, min_value=1, label="search-steps-per-decision")
     env = RLEnvironment(
@@ -98,13 +103,25 @@ def main():
         search_steps_per_decision=search_step_spec,
         max_search_steps=args.max_search_steps,
         reward_clip=args.reward_clip,
-        logger=logger,
+        logger=None,
+        log_type='eval',
+        problem_name='knapsack',
+        log_dir=(args.log_dir or 'logs'),
+        session_id=session_id,
+        emit_init_summary=True,
+    )
+
+    # High-level start header and config (single lines)
+    start_time = time.time()
+    logger.info(
+        f"Run: mode=eval, session_id={session_id}, problem=knapsack, episodes={int(args.episodes)}"
+    )
+    logger.info(
+        f"Config: max_decisions={args.max_decisions}, steps_per_decision={args.search_steps_per_decision}, reward_clip={args.reward_clip}"
     )
 
     episodes_info: list[dict] = []
     returns: list[float] = []
-
-    logger = setup_logging('eval', 'knapsack', log_dir=args.log_dir if args.log_dir else (Path(args.output_dir) / "logs"))
 
     for episode_idx in range(1, max(1, args.episodes) + 1):
         obs, _ = env.reset()
@@ -126,6 +143,15 @@ def main():
             action, _ = model.predict(obs, deterministic=args.deterministic)
             if int(action) == 1 and phase_before == "exploration":
                 episode_switch_steps.append(step_idx)
+            # Log special events at INFO level with observation snapshot
+            if int(action) == 1:
+                event_type = "switch" if phase_before == "exploration" else "terminate"
+                try:
+                    logger.info(
+                        f"Event: action=1, type={event_type}, step={step_idx}, phase_before={phase_before}, observation={(obs.tolist() if hasattr(obs,'tolist') else list(obs))}"
+                    )
+                except Exception:
+                    pass
             prev_best = env.orchestrator.get_best_solution()
             prev_best_fit = prev_best.fitness if prev_best else None
             obs, reward, terminated, truncated, _ = env.step(int(action))
@@ -136,7 +162,9 @@ def main():
             improvement = None
             if prev_best_fit is not None and candidate and candidate.fitness is not None:
                 improvement = float(prev_best_fit - candidate.fitness)
-            logger.info(f"Step {step_idx}: Phase before: {phase_before}, Action: {int(action)}, Phase after: {phase_after}, Reward: {float(reward):.3f}, Terminated: {bool(terminated)}, Truncated: {bool(truncated)}, Best fitness: {(float(candidate.fitness) if candidate and candidate.fitness is not None else None):.3f}, Improvement: {(float(improvement) if improvement is not None else None):.3f}")
+            logger.debug(
+                f"Step {step_idx}: phase_before={phase_before}, action={int(action)}, phase_after={phase_after}, reward={float(reward):.3f}, terminated={bool(terminated)}, truncated={bool(truncated)}, best={(float(candidate.fitness) if candidate and candidate.fitness is not None else None):.3f}, improvement={(float(improvement) if improvement is not None else None):.3f}"
+            )
             if candidate and candidate.fitness is not None:
                 episode_steps.append(step_idx)
                 episode_fitness.append(candidate.fitness)
@@ -163,12 +191,12 @@ def main():
     env.close()
 
     if not episodes_info:
-        print("No solution discovered during evaluation.")
+        duration = max(0.0, time.time() - start_time)
+        logger.info("Summary: episodes=0, return_mean=0.0000, return_std=0.0000, return_min=0.0000, return_max=0.0000, duration_sec=0.0")
         return
 
     mean_return = float(np.mean(returns)) if returns else 0.0
     std_return = float(np.std(returns)) if len(returns) > 1 else 0.0
-    print(f"Evaluated {len(returns)} episode(s) | mean return: {mean_return:.3f} \u00b1 {std_return:.3f}")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -177,7 +205,7 @@ def main():
     fitness_stem = fitness_base.stem if fitness_base.suffix else fitness_base.name
 
     best_episode = min(episodes_info, key=lambda d: d["fitness"] if d["fitness"] is not None else float("inf"))
-    print(f"Best episode #{best_episode['index']} achieved fitness {best_episode['fitness']:.3f}")
+    # No console prints
 
     for info in episodes_info:
         idx = info["index"]
@@ -187,8 +215,12 @@ def main():
             fitness_path = output_dir / f"{fitness_stem}_ep{idx}{fitness_ext}"
             _plot_fitness_history(steps, history, info["switch_steps"], fitness_path)
 
-    print(f"Saved episode plots to {output_dir}")
-    print(f"Step-by-step evaluation log: {logger.path()}")
+    # Final one-line summary for evaluation
+    duration = max(0.0, time.time() - start_time)
+    logger.info(
+        f"Summary: episodes={len(returns)}, return_mean={mean_return:.4f}, return_std={std_return:.4f}, "
+        f"return_min={float(np.min(returns)):.4f}, return_max={float(np.max(returns)):.4f}, duration_sec={duration:.1f}"
+    )
 
 
 if __name__ == "__main__":

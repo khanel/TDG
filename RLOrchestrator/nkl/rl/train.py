@@ -3,6 +3,7 @@ NKL-specific PPO training script.
 """
 
 import argparse
+import time
 from pathlib import Path
 
 from stable_baselines3 import PPO
@@ -14,7 +15,8 @@ from ...core.utils import parse_int_range, setup_logging
 from ...rl.callbacks import PeriodicBestCheckpoint
 
 def main():
-    logger = setup_logging('train', 'nkl')
+    session_id = int(time.time())
+    logger = setup_logging('train', 'nkl', session_id=session_id)
     parser = argparse.ArgumentParser()
     parser.add_argument("--total-timesteps", type=int, default=100000)
     parser.add_argument("--exploration-population", type=int, default=64)
@@ -81,17 +83,15 @@ def main():
                 search_steps_per_decision=search_step_spec,
                 max_search_steps=args.max_search_steps,
                 reward_clip=args.reward_clip,
-                logger=logger,
+                logger=None,
+                log_type='train',
+                problem_name='nkl',
+                log_dir='logs',
+                session_id=session_id,
+                emit_init_summary=(rank == 0),
             )
             if seed is not None:
                 env.reset(seed=seed)
-
-            logger.info(f"Environment created with the following configuration:")
-            logger.info(f"  Problem: {problem.get_problem_info()}")
-            logger.info(f"  Exploration solver: {exploration.__class__.__name__}")
-            logger.info(f"  Exploitation solver: {exploitation.__class__.__name__}")
-            logger.info(f"  Orchestrator: {orchestrator.__class__.__name__}")
-            logger.info(f"  RL Environment: {env.__class__.__name__}")
 
             return env
 
@@ -115,30 +115,38 @@ def main():
         output_path = output_path.with_suffix(".zip")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # High-level start header (single line)
+    logger.info(
+        f"Run: mode=train, session_id={session_id}, problem=nkl, total_timesteps={int(args.total_timesteps)}, num_envs={int(num_envs)}, vec_env={'subproc' if num_envs > 1 else 'single'}"
+    )
+    # High-level config line (single line)
+    logger.info(
+        f"Config: max_decisions={args.max_decisions}, steps_per_decision={args.search_steps_per_decision}, reward_clip={args.reward_clip}, learning_rate={args.ppo_learning_rate}"
+    )
+
     checkpoint_path = Path(args.load_model).expanduser() if args.load_model else None
     if checkpoint_path and checkpoint_path.exists():
         model = PPO.load(checkpoint_path, env=env)
         reset_flag = False
     else:
-        model = PPO("MlpPolicy", env, verbose=2, learning_rate=args.ppo_learning_rate)
+        model = PPO("MlpPolicy", env, verbose=0, learning_rate=args.ppo_learning_rate)
         logger.info(f"Created new PPO model with learning rate: {args.ppo_learning_rate}")
         reset_flag = True
 
     callbacks = []
-    if args.progress_bar:
-        callbacks.append(ProgressBarCallback())
     callbacks.append(
         PeriodicBestCheckpoint(
             total_timesteps=args.total_timesteps,
             save_dir=output_path.parent,
             save_prefix=output_path.stem,
-            verbose=1,
+            verbose=0,
             log_episodes=True,
+            logger=logger,
         )
     )
     callback = CallbackList(callbacks)
 
-    model.learn(total_timesteps=args.total_timesteps,  reset_num_timesteps=reset_flag, callback=callback, progress_bar=True)
+    model.learn(total_timesteps=args.total_timesteps,  reset_num_timesteps=reset_flag, callback=callback, progress_bar=False)
 
     model.save(output_path)
     env.close()

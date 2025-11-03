@@ -27,7 +27,12 @@ class RLEnvironment(gym.Env):
         search_steps_per_decision: int = 1,
         max_search_steps: Optional[int] = None,
         reward_clip: float = 1.0,
-        logger: logging.Logger,
+        logger: Optional[logging.Logger] = None,
+        log_type: Optional[str] = None,
+        problem_name: Optional[str] = None,
+        log_dir: str = 'logs',
+        session_id: Optional[int] = None,
+        emit_init_summary: bool = True,
     ):
         super().__init__()
         self.orchestrator = orchestrator
@@ -42,7 +47,21 @@ class RLEnvironment(gym.Env):
         self._last_observation: Optional[np.ndarray] = None
         self.action_space = gym.spaces.Discrete(2)  # 0=continue, 1=switch phase
         self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32)
-        self.logger = logger
+        # Ensure a process-local logger exists (robust for SubprocVecEnv)
+        try:
+            from multiprocessing import current_process
+            in_main = current_process().name == 'MainProcess'
+        except Exception:
+            in_main = True
+        if logger is not None and in_main:
+            self.logger = logger
+        else:
+            # Initialize a fresh logger in this process when needed
+            from ..core.utils import setup_logging as _setup_logging
+            problem_label = str(problem_name) if problem_name is not None else type(orchestrator.problem).__name__.lower()
+            type_label = str(log_type) if log_type is not None else 'train'
+            self.logger = _setup_logging(type_label, problem_label, log_dir=log_dir, session_id=session_id)
+        self._emit_init_summary = bool(emit_init_summary)
 
         # Build normalization meta from problem, preferring explicit bounds if available
         meta = {}
@@ -63,11 +82,41 @@ class RLEnvironment(gym.Env):
         clip = abs(float(reward_clip))
         self.reward_comp = RewardComputer(meta, clip_range=(-clip, clip), logger=self.logger)
 
-        self.logger.info(f"RLEnvironment initialized with:")
-        self.logger.info(f"  max_decision_steps: {max_decision_steps}")
-        self.logger.info(f"  search_steps_per_decision: {search_steps_per_decision}")
-        self.logger.info(f"  max_search_steps: {max_search_steps}")
-        self.logger.info(f"  reward_clip: {reward_clip}")
+        if self._emit_init_summary:
+            try:
+                obs_shape = tuple(int(x) for x in (self.observation_space.shape or ()))
+                # One-line concise init summary
+                self.logger.info(
+                    f"Env init: max_decisions={max_decision_steps}, steps_per_decision={search_steps_per_decision}, "
+                    f"max_search_steps={max_search_steps}, reward_clip={reward_clip}"
+                )
+                # Observation space + features (one line)
+                obs_names = [
+                    "budget_remaining",
+                    "normalized_best_fitness",
+                    "improvement_velocity",
+                    "stagnation_nonparametric",
+                    "population_concentration",
+                    "landscape_funnel_proxy",
+                    "landscape_deceptiveness_proxy",
+                    "active_phase",
+                ]
+                self.logger.info(
+                    f"Obs space: shape={obs_shape}, dtype={self.observation_space.dtype}, features={obs_names}"
+                )
+                # Reward formula (one line)
+                try:
+                    clip_min = getattr(self.reward_comp, "_clip_min", None)
+                    clip_max = getattr(self.reward_comp, "_clip_max", None)
+                    eff = getattr(self.reward_comp, "efficiency_penalty", None)
+                    self.logger.info(
+                        f"Reward: R=(1-B)*progress + B*exploration - efficiency_penalty + decision_bonus; "
+                        f"clip=[{clip_min},{clip_max}], efficiency_penalty={eff}"
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                pass
 
     def reset(self, *, seed=None, options=None):
         if seed is not None:
@@ -146,7 +195,7 @@ class RLEnvironment(gym.Env):
             switched=switched,
             phase_after=current_phase,
         )
-        self.logger.info(f"Step {self.decision_count}: action={action}, reward={reward:.4f}, terminated={terminated}, truncated={truncated}")
+        self.logger.debug(f"Step {self.decision_count}: action={action}, reward={reward:.4f}, terminated={terminated}, truncated={truncated}")
         return obs, reward, terminated, truncated, {}
 
     def _observe(self):
@@ -154,7 +203,7 @@ class RLEnvironment(gym.Env):
         phase = self.orchestrator.get_phase()
         step_ratio = self.decision_count / self.max_decision_steps
         observation = self.obs_comp.compute(solver, phase, step_ratio)
-        self.logger.info(f"Observation at step {self.decision_count}: {observation}")
+        self.logger.debug(f"Observation at step {self.decision_count}: {observation}")
         return observation
 
     def _normalize_range(self, spec: IntRangeSpec | int) -> Tuple[int, int]:

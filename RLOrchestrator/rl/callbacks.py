@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
+import logging
+import time
 
 
 class PeriodicBestCheckpoint(BaseCallback):
@@ -21,6 +23,7 @@ class PeriodicBestCheckpoint(BaseCallback):
         fraction: float = 0.05,
         verbose: int = 0,
         log_episodes: bool = True,
+        logger: Optional[logging.Logger] = None,
     ):
         super().__init__(verbose)
         if total_timesteps <= 0:
@@ -55,6 +58,9 @@ class PeriodicBestCheckpoint(BaseCallback):
         self._next_progress_idx = 0
         self._segment_returns: list[float] = []
         self._segment_episode_count = 0
+        self._all_episode_returns: list[float] = []
+        self._logger = logger
+        self._start_time: float = 0.0
 
     def _init_callback(self) -> None:
         env = self.training_env
@@ -63,6 +69,7 @@ class PeriodicBestCheckpoint(BaseCallback):
         n_envs = env.num_envs
         self._episode_returns = np.zeros(n_envs, dtype=np.float64)
         self.save_dir.mkdir(parents=True, exist_ok=True)
+        self._start_time = time.time()
 
     def _on_step(self) -> bool:
         rewards: np.ndarray = np.asarray(self.locals.get("rewards"), dtype=np.float64)
@@ -80,25 +87,13 @@ class PeriodicBestCheckpoint(BaseCallback):
                     self._best_reward = ep_ret
                 self._segment_returns.append(ep_ret)
                 self._segment_episode_count += 1
+                self._all_episode_returns.append(ep_ret)
 
+        # Suppress mid-run progress logs; advance thresholds silently
         while (
             self._next_progress_idx < len(self._progress_thresholds)
             and self.num_timesteps >= self._progress_thresholds[self._next_progress_idx]
         ):
-            if self.log_episodes or self.verbose > 0:
-                threshold = self._progress_thresholds[self._next_progress_idx]
-                progress_ratio = min(1.0, threshold / max(1, self.total_timesteps))
-                percent = progress_ratio * 100.0
-                if self._segment_episode_count > 0:
-                    mean_return = float(np.mean(self._segment_returns))
-                    print(
-                        f"[progress {percent:5.1f}%] mean episode reward={mean_return:.3f} "
-                        f"({self._segment_episode_count} episodes)"
-                    )
-                else:
-                    print(
-                        f"[progress {percent:5.1f}%] no completed episodes in this interval"
-                    )
             self._segment_returns.clear()
             self._segment_episode_count = 0
             self._next_progress_idx += 1
@@ -118,19 +113,23 @@ class PeriodicBestCheckpoint(BaseCallback):
     def _save_checkpoint(self, threshold: int, best_reward: float) -> None:
         filename = f"{self.save_prefix}_best_step{threshold}.zip"
         path = self.save_dir / filename
-        if self.verbose > 0:
-            print(f"Saving new best checkpoint to {path} (reward={best_reward:.3f})")
+        if self._logger is not None:
+            self._logger.debug(f"Saving new best checkpoint to {path} (reward={best_reward:.3f})")
         self.model.save(path)
 
     def _on_training_end(self) -> None:
-        if not (self.log_episodes or self.verbose > 0):
+        if self._logger is None:
             return
-        if self._segment_episode_count <= 0:
-            return
-        progress_ratio = min(1.0, self.num_timesteps / max(1, self.total_timesteps))
-        percent = progress_ratio * 100.0
-        mean_return = float(np.mean(self._segment_returns))
-        print(
-            f"[progress {percent:5.1f}%] mean episode reward={mean_return:.3f} "
-            f"({self._segment_episode_count} episodes)"
-        )
+        # Final training summary across the entire run (single line)
+        total_eps = len(self._all_episode_returns)
+        duration = max(0.0, time.time() - (self._start_time or time.time()))
+        if total_eps > 0:
+            arr = np.asarray(self._all_episode_returns, dtype=float)
+            mean = float(np.mean(arr))
+            std = float(np.std(arr))
+            mn = float(np.min(arr))
+            mx = float(np.max(arr))
+            self._logger.info(
+                f"Summary: episodes={int(total_eps)}, return_mean={mean:.4f}, return_std={std:.4f}, "
+                f"return_min={mn:.4f}, return_max={mx:.4f}, total_timesteps={int(self.num_timesteps)}, duration_sec={duration:.1f}"
+            )

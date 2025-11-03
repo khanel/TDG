@@ -113,8 +113,17 @@ import logging
 import time
 from pathlib import Path
 
-def setup_logging(log_type: str, problem_name: str, log_dir: str = 'logs') -> logging.Logger:
-    """Sets up a logger for a training or evaluation script."""
+def setup_logging(
+    log_type: str,
+    problem_name: str,
+    log_dir: str = 'logs',
+    *,
+    session_id: int | None = None,
+    to_stream: bool = False,
+) -> logging.Logger:
+    """Sets up a logger for a training or evaluation script.
+    If session_id is provided, it is embedded in the formatter so child processes can reuse it.
+    """
     log_dir_path = Path(log_dir)
     log_dir_path.mkdir(exist_ok=True)
 
@@ -128,17 +137,21 @@ def setup_logging(log_type: str, problem_name: str, log_dir: str = 'logs') -> lo
     if not logger.handlers:
         # Create handlers
         file_handler = logging.FileHandler(log_file, mode='a')  # Append mode
-        stream_handler = logging.StreamHandler()
+        stream_handler = logging.StreamHandler() if to_stream else None
 
         # Create formatters and add it to handlers
-        session_id = int(time.time())
-        formatter = logging.Formatter(f'%(asctime)s - %(levelname)s - [Session: {session_id}]-[Problem: {{problem_name}}] - %(message)s'.format(problem_name=problem_name))
+        session_val = int(session_id) if session_id is not None else int(time.time())
+        formatter = logging.Formatter(
+            f'%(asctime)s - %(levelname)s - [Session: {session_val}]-[Problem: {problem_name}] - %(message)s'
+        )
         file_handler.setFormatter(formatter)
-        stream_handler.setFormatter(formatter)
+        if stream_handler is not None:
+            stream_handler.setFormatter(formatter)
 
         # Add handlers to the logger
         logger.addHandler(file_handler)
-        logger.addHandler(stream_handler)
+        if stream_handler is not None:
+            logger.addHandler(stream_handler)
 
     return logger
 

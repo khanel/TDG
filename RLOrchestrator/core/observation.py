@@ -69,12 +69,12 @@ class ObservationComputer:
         self.improvement_velocity: float = 0.0
         self.fitness_history: deque[float] = deque(maxlen=self.stagnation_window_size * 2)
 
-        self.logger.info(f"ObservationComputer initialized with:")
-        self.logger.info(f"  fitness_bounds: {self.fitness_lower_bound, self.fitness_upper_bound}")
-        self.logger.info(f"  velocity_ewma_alpha: {self.velocity_ewma_alpha}")
-        self.logger.info(f"  stagnation_window_size: {self.stagnation_window_size}")
-        self.logger.info(f"  funnel_probe_size: {self.funnel_probe_size}")
-        self.logger.info(f"  deception_probe_mutation_strength: {self.deception_probe_mutation_strength}")
+        self.logger.debug("ObservationComputer initialized")
+        self.logger.debug(f"  fitness_bounds: {self.fitness_lower_bound, self.fitness_upper_bound}")
+        self.logger.debug(f"  velocity_ewma_alpha: {self.velocity_ewma_alpha}")
+        self.logger.debug(f"  stagnation_window_size: {self.stagnation_window_size}")
+        self.logger.debug(f"  funnel_probe_size: {self.funnel_probe_size}")
+        self.logger.debug(f"  deception_probe_mutation_strength: {self.deception_probe_mutation_strength}")
 
     def reset(self) -> None:
         """Reset all internal state trackers for a new episode."""
@@ -84,7 +84,7 @@ class ObservationComputer:
         self.fitness_history.clear()
 
     def compute(self, solver, phase: str, step_ratio: float) -> np.ndarray:
-        """Compute the 8-element observation vector."""
+        """Compute the 8-element observation vector and log a detailed breakdown."""
         self.step_index += 1
 
         # Snapshot core solver state
@@ -141,7 +141,25 @@ class ObservationComputer:
             deceptiveness,
             active_phase,
         ], dtype=np.float32)
-        self.logger.info(f"Observation computed at step {self.step_index}: {observation}")
+        # Optional detailed breakdown (debug-level only to keep file logs high-level)
+        try:
+            self.logger.debug("Observation calculation:")
+            self.logger.debug(
+                f"  - step: {self.step_index}, phase: {phase}, step_ratio: {float(step_ratio):.4f}"
+            )
+            self.logger.debug(f"  - budget_remaining: {float(budget_remaining):.4f}")
+            self.logger.debug(f"  - normalized_best_fitness: {float(normalized_best_fitness):.4f}")
+            self.logger.debug(
+                f"  - improvement_velocity: {float(self.improvement_velocity):.4f} (delta: {float(delta):.4f})"
+            )
+            self.logger.debug(f"  - stagnation_nonparametric: {float(stagnation):.4f}")
+            self.logger.debug(f"  - population_concentration: {float(concentration):.4f}")
+            self.logger.debug(f"  - landscape_funnel_proxy: {float(funnel):.4f}")
+            self.logger.debug(f"  - landscape_deceptiveness_proxy: {float(deceptiveness):.4f}")
+            self.logger.debug(f"  - active_phase: {'exploitation' if active_phase == 1.0 else 'exploration'}")
+        except Exception:
+            pass
+        self.logger.debug(f"Observation computed at step {self.step_index}: {observation}")
         return observation
 
     def _compute_stagnation(self) -> float:

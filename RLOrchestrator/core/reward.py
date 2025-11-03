@@ -21,7 +21,7 @@ class RewardComputer:
         problem_bounds: dict,
         *,
         clip_range: tuple[float, float] = (-1.0, 1.0),
-        efficiency_penalty: float = 0.01,
+        efficiency_penalty: float = 0.001,
         logger: logging.Logger,
     ):
         """
@@ -41,10 +41,11 @@ class RewardComputer:
         self._fitness_range = max(1e-9, self.upper_bound - self.lower_bound)
         self.efficiency_penalty = float(efficiency_penalty)
 
-        self.logger.info(f"RewardComputer initialized with:")
-        self.logger.info(f"  problem_bounds: {problem_bounds}")
-        self.logger.info(f"  clip_range: {clip_range}")
-        self.logger.info(f"  efficiency_penalty: {self.efficiency_penalty}")
+        # Keep initialization logs at debug level to avoid noisy files
+        self.logger.debug("RewardComputer initialized")
+        self.logger.debug(f"  problem_bounds: {problem_bounds}")
+        self.logger.debug(f"  clip_range: {clip_range}")
+        self.logger.debug(f"  efficiency_penalty: {self.efficiency_penalty}")
 
     def compute(
         self,
@@ -91,10 +92,7 @@ class RewardComputer:
                 # Termination bonus: rewards finishing with a high-quality solution.
                 final_norm_best = obs[1]
                 decision_reward = 1.0 - final_norm_best
-                # Penalty for stopping prematurely with significant budget left.
-                budget_remaining = obs[0]
-                if budget_remaining > 0.1:  # e.g., if more than 10% of budget is left
-                    decision_reward -= budget_remaining
+
 
         # --- 4. Budget-Aware Weighting ---
         # B = budget_remaining, from 1 (start) to 0 (end).
@@ -117,16 +115,16 @@ class RewardComputer:
 
         final_reward = float(np.clip(total_reward, self._clip_min, self._clip_max))
 
-        self.logger.info(f"Reward calculation:")
-        self.logger.info(f"  - improvement: {improvement:.4f}, normalized: {normalized_improvement:.4f}")
-        self.logger.info(f"  - progress_reward: {progress_reward:.4f}")
-        self.logger.info(f"  - current_concentration: {current_concentration:.4f}, previous_concentration: {previous_concentration:.4f}")
-        self.logger.info(f"  - exploration_reward: {exploration_reward:.4f}")
-        self.logger.info(f"  - decision_reward: {decision_reward:.4f} (action={action}, phase={phase}, switched={switched}, terminated={terminated})")
-        self.logger.info(f"  - budget_remaining: {budget_remaining:.4f}, w_quality: {w_quality:.4f}, w_explore: {w_explore:.4f}")
-        self.logger.info(f"  - efficiency_penalty: {self.efficiency_penalty:.4f}")
-        self.logger.info(f"  - total_reward (before clip): {total_reward:.4f}")
-        self.logger.info(f"  - final_reward (after clip): {final_reward:.4f}")
+        self.logger.debug(f"Reward calculation:")
+        self.logger.debug(f"  - improvement: {improvement:.4f}, normalized: {normalized_improvement:.4f}")
+        self.logger.debug(f"  - progress_reward: {progress_reward:.4f}")
+        self.logger.debug(f"  - current_concentration: {current_concentration:.4f}, previous_concentration: {previous_concentration:.4f}")
+        self.logger.debug(f"  - exploration_reward: {exploration_reward:.4f}")
+        self.logger.debug(f"  - decision_reward: {decision_reward:.4f} (action={action}, phase={phase}, switched={switched}, terminated={terminated})")
+        self.logger.debug(f"  - budget_remaining: {budget_remaining:.4f}, w_quality: {w_quality:.4f}, w_explore: {w_explore:.4f}")
+        self.logger.debug(f"  - efficiency_penalty: {self.efficiency_penalty:.4f}")
+        self.logger.debug(f"  - total_reward (before clip): {total_reward:.4f}")
+        self.logger.debug(f"  - final_reward (after clip): {final_reward:.4f}")
 
         return final_reward
 
