@@ -10,40 +10,51 @@ This document outlines the design for the minimal observation space for the RL o
 -   **Normalization:** All features should be normalized to the range `[0, 1]` to ensure they are on a comparable scale for the RL agent.
 -   **Informativeness:** Each feature should provide a clear signal about the state of the search process.
 
-## 3. Proposed Observation Vector (6-dimensional)
+## 3. Finalized Observation Vector (6-dimensional)
 
-The initial observation space will be a 6-dimensional vector. The existing `ObservationComputer` already defines an 8-dimensional space; this represents a refinement and simplification of that initial idea.
+The observation space is a six-element vector. Each feature is normalized to `[0, 1]` (or `[-1, 1]` where explicitly noted) to keep inputs on comparable scales for the policy.
 
-1.  **`budget_remaining` (Normalized):**
-    -   **Description:** The fraction of the total decision-making budget that is left.
-    -   **Calculation:** `1.0 - (current_decision_step / max_decision_steps)`
-    -   **Signal:** Tells the agent how much time it has left. An agent might learn to be more aggressive with switching as the budget depletes.
+1.  **`budget_remaining`**
+    -   **Description:** Fraction of the decision budget that has not yet been consumed.
+    -   **Calculation:** `1.0 - step_ratio`, where `step_ratio = decision_count / max_decision_steps`.
+    -   **Signal:** Encourages time-aware policies. Low remaining budget should bias the agent toward decisive switching.
 
-2.  **`normalized_best_fitness`:**
-    -   **Description:** The fitness of the best solution found so far, scaled to `[0, 1]`.
-    -   **Calculation:** Requires problem-specific bounds (e.g., min/max possible fitness). `(current_fitness - min_fitness) / (max_fitness - min_fitness)`.
-    -   **Signal:** Indicates the absolute quality of the current best solution.
+2.  **`normalized_best_fitness`**
+    -   **Description:** Best-so-far fitness, normalized using problem-provided bounds.
+    -   **Calculation:** `(best_fitness - lower_bound) / (upper_bound - lower_bound)` with clipping to `[0, 1]`.
+    -   **Signal:** Communicates absolute solution quality irrespective of problem scale.
 
-3.  **`improvement_velocity`:**
-    -   **Description:** The rate of improvement in fitness over a recent window of steps.
-    -   **Calculation:** A measure like `(fitness_at_t - fitness_at_t-N) / N`, normalized.
-    -   **Signal:** A high velocity suggests the current solver is still effective. A low or zero velocity indicates stagnation.
+3.  **`improvement_velocity`**
+    -   **Description:** Exponentially weighted moving average (EWMA) of the improvement rate in normalized best fitness.
+    -   **Calculation:**
+        ```
+        delta = prev_normalized_best_fitness - normalized_best_fitness
+        velocity = alpha * delta + (1 - alpha) * velocity
+        ```
+        with `alpha = 0.3` and clipping to `[-1, 1]`.
+    -   **Signal:** Positive values indicate ongoing improvements; values near zero reveal stagnation.
 
-4.  **`stagnation`:**
-    -   **Description:** The number of decision steps since the last improvement in the best-known fitness, normalized by the total budget.
-    -   **Calculation:** `(steps_since_last_improvement / max_decision_steps)`
-    -   **Signal:** A direct measure of how long the search has been "stuck."
+4.  **`stagnation`**
+    -   **Description:** Binary indicator flagging whether the best fitness has remained unchanged across the recent observation window.
+    -   **Calculation:** Maintain a deque of the latest `stagnation_window = 10` fitness samples; output `1.0` if the first and last entries are identical, otherwise `0.0`.
+    -   **Signal:** Alerts the agent when progress has plateaued long enough to justify switching.
 
-5.  **`population_diversity`:**
-    -   **Description:** A measure of how diverse the solutions in the current population are.
-    -   **Calculation:** This could be the average pairwise distance between solutions in the population, normalized.
-    -   **Signal:** In exploration, high diversity is good. In exploitation, diversity is expected to decrease as the population converges on a solution. A sudden drop in diversity during exploration might signal that it's time to switch.
+5.  **`population_diversity`**
+    -   **Description:** Mean distance of population members from the centroid in a unit-normalized solution space.
+    -   **Calculation Steps:**
+        1. Extract solution representations and stack into an array.
+        2. Normalize each dimension to `[0, 1]` via min–max scaling.
+        3. Compute the centroid and average Euclidean distance to it.
+        4. Divide by `sqrt(dimensions) / 2` and clip to `[0, 1]`.
+    -   **Signal:** High diversity signifies broad exploration; low diversity indicates convergence.
 
-6.  **`active_phase`:**
-    -   **Description:** A binary indicator of the current phase.
+6.  **`active_phase`**
+    -   **Description:** Encodes the current stage of the pipeline.
     -   **Calculation:** `0.0` for exploration, `1.0` for exploitation.
-    -   **Signal:** Ensures the agent's policy can be conditional on the current stage of the search.
+    -   **Signal:** Allows the policy to condition behavior on the active solver.
 
-## 4. Implementation
+## 4. Implementation Notes
 
-This observation space will be implemented within the `ObservationComputer` class in `RLOrchestrator/core/observation.py`. The existing 8-dimensional space will be replaced with this more focused 6-dimensional version.
+-   The `ObservationComputer` lives in `RLOrchestrator/core/observation.py` and owns the state required for velocity and stagnation tracking.
+-   Problem metadata must supply meaningful fitness bounds; fallback defaults to `[0, 1]` if absent.
+-   Diversity computation expects population members to expose a numeric `representation`. Algorithms that cannot supply this should implement an adapter before integration.

@@ -60,7 +60,7 @@ class OrchestratorEnv(gym.Env):
         self._last_observation: Optional[np.ndarray] = None
 
         self.action_space = gym.spaces.Discrete(2)  # 0=STAY, 1=ADVANCE
-        self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32)
+        self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(6,), dtype=np.float32)
 
         problem_label = type(problem).__name__.lower()
         self.logger = setup_logging(log_type, problem_label, log_dir=log_dir, session_id=session_id)
