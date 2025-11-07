@@ -2,6 +2,6 @@
 RL-specific components for training and inference.
 """
 
-from .environment import RLEnvironment
+# This file is intentionally left blank.
 
 __all__ = ['RLEnvironment']

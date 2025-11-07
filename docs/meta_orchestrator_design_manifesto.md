@@ -16,17 +16,17 @@ This document outlines the proposed design and serves as a checklist for develop
 
 ## 1. Core Minimal Design
 
-[ ] **1.1 Uni-directional Pipeline:** Formalize the state machine for the `Exploration` -> `Exploitation` -> `Termination` lifecycle.
-[ ] **1.2 Population-Based Solvers:** Define a clear contract for how solvers are used in each stage. Solvers must be population-based meta-heuristics to support population transfer.
-[ ] **1.3 Integrated Design:** Refactor the existing `RLOrchestrator` core to support this model, ensuring seamless integration with the current codebase.
+[x] **1.1 Uni-directional Pipeline:** Formalize the state machine for the `Exploration` -> `Exploitation` -> `Termination` lifecycle.
+[x] **1.2 Population-Based Solvers:** Define a clear contract for how solvers are used in each stage. Solvers must be population-based meta-heuristics to support population transfer.
+[x] **1.3 Integrated Design:** Refactor the existing `RLOrchestrator` core to support this model, ensuring seamless integration with the current codebase.
 
 ---
 
 ## 2. Interfaces and Cohesion
 
-[ ] **2.1 Centralized State Management:** Use a core object as the single source of truth for the problem definition and solver instances.
-[ ] **2.2 Protocol Contracts:** Define the data structures for communication (e.g., observations, actions, rewards) in a centralized, shared location.
-[ ] **2.3 Strict Contract Adherence:** Ensure the environment and all related components use the defined contracts without ad-hoc data types.
+[x] **2.1 Centralized State Management:** Use a core object as the single source of truth for the problem definition and solver instances.
+[x] **2.2 Protocol Contracts:** Define the data structures for communication (e.g., observations, actions, rewards) in a centralized, shared location.
+[x] **2.3 Strict Contract Adherence:** Ensure the environment and all related components use the defined contracts without ad-hoc data types.
 
 ---
 

@@ -13,7 +13,7 @@ from stable_baselines3 import PPO
 
 from ...core.orchestrator import Orchestrator
 from ...core.utils import parse_int_range, setup_logging
-from ...rl.environment import RLEnvironment
+from ...core.env_factory import create_env
 from ...maxcut.adapter import MaxCutAdapter
 from ...maxcut.solvers import MaxCutRandomExplorer, MaxCutLocalSearch
 from ...rl.eval_logging import EvaluationLogger, StepRecord, EpisodeSummary
@@ -114,15 +114,15 @@ def main():
 
     max_decision_spec = parse_int_range(args.max_decisions, min_value=1, label="max-decisions")
     search_step_spec = parse_int_range(args.search_steps_per_decision, min_value=1, label="search-steps-per-decision")
-    env = RLEnvironment(
-        orchestrator,
+    env = create_env(
+        problem,
+        exploration,
+        exploitation,
         max_decision_steps=max_decision_spec,
         search_steps_per_decision=search_step_spec,
         max_search_steps=args.max_search_steps,
         reward_clip=args.reward_clip,
-        logger=None,
         log_type='eval',
-        problem_name='maxcut',
         log_dir=(args.log_dir or 'logs'),
         session_id=session_id,
         emit_init_summary=True,

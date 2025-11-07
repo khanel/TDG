@@ -2,16 +2,21 @@
 
 ## What Works
 
--   Nothing. The project is at the initial design and documentation stage.
+-   The core architecture has been refactored into a single, integrated `OrchestratorEnv`.
+-   A centralized `create_env` factory ensures consistent environment creation.
+-   All training and evaluation scripts have been updated to use the new factory.
+-   The project's package-level exports (`__init__.py`) are updated.
 
 ## What's Left to Build
 
--   The entire system as outlined in the `meta_orchestrator_design_manifesto.md`.
+-   Implementation of the observation and reward computers.
+-   Wiring for the initial TSP use case.
+-   The full training and experimentation framework.
 
 ## Current Status
 
--   **Phase:** Design & Initialization.
--   **Next Milestone:** Formalize and implement the core uni-directional pipeline (Manifesto item 1.1).
+-   **Phase:** Core Implementation.
+-   **Next Milestone:** Define and implement the minimal observation space (Manifesto section 3).
 
 ## Known Issues
 

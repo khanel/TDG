@@ -64,7 +64,7 @@ def main():
     def make_env_fn(rank: int):
         def _init():
             from ...core.orchestrator import Orchestrator
-            from ...rl.environment import RLEnvironment
+            from ...core.env_factory import create_env
             from ...maxcut.adapter import MaxCutAdapter
             from ...maxcut.solvers import MaxCutRandomExplorer, MaxCutLocalSearch
 
@@ -95,15 +95,15 @@ def main():
                     solver.initialize()
             orchestrator = Orchestrator(problem, exploration, exploitation, start_phase="exploration")
             orchestrator._update_best()
-            env = RLEnvironment(
-                orchestrator,
+            env = create_env(
+                problem,
+                exploration,
+                exploitation,
                 max_decision_steps=max_decision_spec,
                 search_steps_per_decision=search_step_spec,
                 max_search_steps=args.max_search_steps,
                 reward_clip=args.reward_clip,
-                logger=None,
                 log_type='train',
-                problem_name='maxcut',
                 log_dir='logs',
                 session_id=session_id,
                 emit_init_summary=(rank == 0),

@@ -2,12 +2,12 @@
 
 ## Current Focus
 
-The immediate goal is to implement the first item from the `meta_orchestrator_design_manifesto.md`:
+The core refactoring is complete. The `Orchestrator` and `RLEnvironment` have been merged into a single `OrchestratorEnv` class, and a factory pattern has been introduced for environment creation.
 
-**[1.1] Uni-directional Pipeline:** Formalize the state machine for the `Exploration` -> `Exploitation` -> `Termination` lifecycle.
+The immediate goal is to define the minimal observation space for the RL agent, as per section 3 of the `meta_orchestrator_design_manifesto.md`.
 
 ## Next Steps
 
-1.  Create a new design document to formalize the state machine. This document will detail the states, transitions, and conditions.
-2.  Implement the core logic for this state machine within the `RLOrchestrator` framework.
-3.  Update the manifesto to mark this item as complete.
+1.  Define the minimal observation space in a new design document.
+2.  Implement the `ObservationComputer` component.
+3.  Update the manifesto to mark this work as complete.
