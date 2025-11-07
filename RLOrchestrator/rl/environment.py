@@ -110,7 +110,7 @@ class RLEnvironment(gym.Env):
                     clip_max = getattr(self.reward_comp, "_clip_max", None)
                     eff = getattr(self.reward_comp, "efficiency_penalty", None)
                     self.logger.info(
-                        f"Reward: R=(1-B)*progress + B*exploration - efficiency_penalty + decision_bonus; "
+                        "Reward: R = w_q(B)*progress + w_e(B)*phase_aware_diversity - efficiency_penalty + switch_adv + term_adv; "
                         f"clip=[{clip_min},{clip_max}], efficiency_penalty={eff}"
                     )
                 except Exception:
