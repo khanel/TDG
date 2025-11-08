@@ -12,6 +12,7 @@ from Core.search_algorithm import SearchAlgorithm
 
 class KnapsackLocalSearch(SearchAlgorithm):
     """Greedy bit-flip hill climbing with stochastic escapes."""
+    phase = 'exploitation'
 
     def __init__(
         self,

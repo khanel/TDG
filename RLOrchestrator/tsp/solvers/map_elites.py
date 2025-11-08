@@ -21,6 +21,7 @@ class ArchiveEntry:
 
 class TSPMapElites(SearchAlgorithm):
     """MAP-Elites-inspired explorer tailored for TSP problems."""
+    phase = 'exploration'
 
     def __init__(
         self,

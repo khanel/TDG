@@ -61,7 +61,7 @@ This document outlines the proposed design and serves as a checklist for develop
 [x] **6.1 Dynamic Episode Configuration:** Design the training loop to be highly variable.
     - At the start of each episode, randomly select a problem type (e.g., TSP, MaxCut).
     - For the selected problem, randomly select a valid pair of configured exploration and exploitation solvers.
-[ ] **6.2 Unbiased Policy Learning:** This randomization is critical to ensure the agent learns a general-purpose policy that is not overfitted to a specific problem or solver combination.
+[x] **6.2 Unbiased Policy Learning:** This randomization is critical to ensure the agent learns a general-purpose policy that is not overfitted to a specific problem or solver combination.
 
 ---
 

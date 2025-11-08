@@ -2,12 +2,10 @@
 
 ## Current Focus
 
-The initial design and implementation phase is complete. All core components of the meta-orchestrator have been designed, implemented, and documented as per the manifesto.
-
-The immediate goal is to prepare for the next phase of development, which involves implementing the generalized training loop and beginning experimentation.
+A generalized training script, `RLOrchestrator/rl/train_generalized.py`, has been created. This script enables the training of a single, robust policy across multiple problems and solver combinations by leveraging dynamic environment configuration.
 
 ## Next Steps
 
-1.  Implement the generalized training loop as designed in `docs/dynamic_training_design.md`.
-2.  Create an initial set of experiments to establish a performance baseline.
-3.  Begin the process of tuning the reward function and observation space based on experimental results.
+1.  Run the generalized training script to produce the first version of the `ppo_generalized.zip` model.
+2.  Design and implement a baseline experiment to evaluate the performance of the learned policy against fixed strategies.
+3.  Analyze the results and begin iterating on the observation space, reward function, and other hyperparameters.

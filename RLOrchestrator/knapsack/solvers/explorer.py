@@ -12,6 +12,7 @@ from Core.search_algorithm import SearchAlgorithm
 
 class KnapsackRandomExplorer(SearchAlgorithm):
     """Maintains a diverse population via random bit flips and repair."""
+    phase = 'exploration'
 
     def __init__(
         self,

@@ -14,6 +14,7 @@ from Core.search_algorithm import SearchAlgorithm
 
 class MaxCutLocalSearch(SearchAlgorithm):
     """Performs iterative bit-flip improvements with occasional random escapes."""
+    phase = 'exploitation'
 
     def __init__(
         self,

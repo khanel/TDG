@@ -24,6 +24,7 @@ class ParticleState:
 
 class TSPParticleSwarm(SearchAlgorithm):
     """Random-keys PSO for TSP permutations."""
+    phase = 'exploitation'
 
     def __init__(
         self,
