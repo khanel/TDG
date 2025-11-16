@@ -82,6 +82,22 @@ class MaxCutAdapter(ProblemInterface):
     def get_bounds(self) -> Dict[str, float]:
         return dict(self._bounds)
 
+    def sample_neighbors(self, solution: Solution, k: int, **kwargs) -> List[Solution]:
+        """Generates k neighbors of a Max-Cut solution by flipping single bits."""
+        neighbors = []
+        base_rep = np.asarray(solution.representation)
+        n_nodes = len(base_rep)
+        if n_nodes == 0:
+            return [solution.copy() for _ in range(k)]
+
+        for _ in range(k):
+            neighbor_rep = base_rep.copy()
+            idx_to_flip = self._rng.integers(0, n_nodes)
+            neighbor_rep[idx_to_flip] = 1 - neighbor_rep[idx_to_flip]
+            neighbors.append(Solution(neighbor_rep.tolist(), self))
+            
+        return neighbors
+
     def regenerate_instance(self) -> bool:
         if not self._randomizable:
             return False

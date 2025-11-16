@@ -95,6 +95,29 @@ class TSPAdapter(ProblemInterface):
     def get_bounds(self) -> Dict[str, float]:
         return dict(self._bounds)
 
+    def sample_neighbors(self, solution: Solution, k: int, **kwargs) -> List[Solution]:
+        """Generates k neighbors of a TSP tour by applying 2-opt swaps."""
+        neighbors = []
+        base_tour = list(solution.representation)
+        n_cities = len(base_tour)
+        if n_cities < 2:
+            return [solution.copy() for _ in range(k)]
+
+        for _ in range(k):
+            neighbor_tour = base_tour[:]
+            i, j = self._rng.choice(n_cities, 2, replace=False)
+            if i > j:
+                i, j = j, i
+            
+            # Apply 2-opt swap
+            segment = neighbor_tour[i:j+1]
+            segment.reverse()
+            neighbor_tour = neighbor_tour[:i] + segment + neighbor_tour[j+1:]
+            
+            neighbors.append(Solution(neighbor_tour, self))
+            
+        return neighbors
+
     def regenerate_instance(self) -> bool:
         if not self._randomizable or self._rng is None:
             return False
