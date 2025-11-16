@@ -53,6 +53,7 @@ This document outlines the proposed design and serves as a checklist for develop
 [x] **5.1 Transition Semantics:** Formalize the `STAY` (0) and `ADVANCE` (1) actions. The `ADVANCE` action must trigger the transfer of the entire population from the current solver to the next.
 [x] **5.2 Orchestrator Environment:** Implement the `gym.Env` that encapsulates the orchestration logic.
     - *Proposed name: `OrchestratorEnv` to be integrated into `RLOrchestrator/core/orchestrator.py`.*
+[x] **5.3 Stage Controller:** Isolate the state machine in a dedicated `StageController` + `OrchestratorContext` so that both RL policies and scripted evaluators share the same progression semantics.
 
 ---
 
@@ -61,7 +62,7 @@ This document outlines the proposed design and serves as a checklist for develop
 [x] **6.1 Dynamic Episode Configuration:** Design the training loop to be highly variable.
     - At the start of each episode, randomly select a problem type (e.g., TSP, MaxCut).
     - For the selected problem, randomly select a valid pair of configured exploration and exploitation solvers.
-[ ] **6.2 Unbiased Policy Learning:** This randomization is critical to ensure the agent learns a general-purpose policy that is not overfitted to a specific problem or solver combination.
+[x] **6.2 Unbiased Policy Learning:** This randomization is critical to ensure the agent learns a general-purpose policy that is not overfitted to a specific problem or solver combination.
 
 ---
 
@@ -74,13 +75,14 @@ This document outlines the proposed design and serves as a checklist for develop
         - Exploration Solver: `TSPMapElites` (Population-Based)
         - Exploitation Solver: `TSPParticleSwarm` (Population-Based)
         - Wrapper: `OrchestratorEnv`
-[ ] **7.3 Future Problem Wiring:** Plan for extending the framework to other problems (e.g., MaxCut, Knapsack, NKL).
+[x] **7.3 Problem Registry Bundles:** Introduce `ProblemDefinition` + `instantiate_problem(...)` so adapters and solvers are always composed through declarative bundles rather than ad-hoc imports.
+[ ] **7.4 Future Problem Wiring:** Plan for extending the framework to other problems (e.g., MaxCut, Knapsack, NKL).
 
 ---
 
 ## 8. Experimentation Framework
 
-[ ] **8.1 Baseline Implementation:** Implement the core stack with TSP wiring to establish a performance baseline.
+[x] **8.1 Baseline Implementation:** Implement the core stack with TSP wiring to establish a performance baseline.
 [ ] **8.2 Incremental Experiments:** Design a framework to toggle additional observation features or reward variants to measure their impact.
 
 ---

@@ -6,6 +6,8 @@ A clean, extensible framework for RL-controlled orchestration of exploration and
 
 This framework provides abstract interfaces for solvers and problems, allowing easy integration of external algorithms (e.g., MAP-Elites, GWO) for phased search. It separates RL training (policy learning) from inference (solving), and supports any problem via adapters.
 
+See `docs/architecture.md` for a full description of the orchestrator architecture, registries, and wiring patterns.
+
 ## Observation Space
 
 The observation space is an 8-element vector in [0,1], designed to be predictive, problem-agnostic, and efficient:
@@ -22,12 +24,11 @@ The observation space is an 8-element vector in [0,1], designed to be predictive
 ## Structure
 
 - `core/`: Orchestrator wrapper, observation, reward, and utilities (problem-agnostic).
-- `tsp/`: TSP adapter, solvers (`map_elites`, `pso`), and RL entry points (`rl/train.py`, `rl/evaluate.py`).
-- `maxcut/`: Max-Cut adapter, solvers (`explorer`, `local_search`), and RL entry points (`rl/train.py`, `rl/evaluate.py`).
-- `knapsack/`: Knapsack adapter, solvers (`explorer`, `local_search`), and RL entry points (`rl/train.py`, `rl/evaluate.py`).
-- `knapsack/`: Knapsack adapter.
-- `problems/registry.py`: Lightweight registry that maps problem names to adapters from the per-problem packages (kept for compatibility).
-- `solvers/`: Registry for registering additional exploration/exploitation algorithms; default registrations import the implementations from the per-problem packages.
+- `tsp/`: TSP adapter, solver implementations (e.g., MAP-Elites, PSO), and RL entry points; scripts pull everything through the problem registry instead of wiring classes manually.
+- `maxcut/`: Max-Cut adapter, solver implementations (`explorer`, `exploiter`), and RL entry points built on the shared registry-driven wiring.
+- `knapsack/`: Knapsack adapter, solver implementations, and RL entry points that rely on the same bundle builder.
+- `problems/registry.py`: Canonical registry of `ProblemDefinition` entries describing adapters plus stage-specific solver factories; call `instantiate_problem(...)` to obtain a ready-to-use `ProblemBundle`.
+- `solvers/`: Registry helpers that surface available solver classes by consulting the problem definitions (no filesystem crawling).
 - `rl/environment.py`: Problem-agnostic Gymnasium environment used by all training scripts.
 
 ## Usage
@@ -81,6 +82,6 @@ Both the TSP and Max-Cut adapters regenerate a fresh random instance at the begi
 
 ## Extending
 
-- Implement a new adapter under `RLOrchestrator/<problem>/adapter.py` and register it in `problems/registry.py`.
-- Add exploration/exploitation solvers in `RLOrchestrator/<problem>/solvers/` and register them via `solvers/registry.py`.
-- Create problem-specific RL entry points under `RLOrchestrator/<problem>/rl/` that build on the shared environment.
+- Implement a new adapter under `RLOrchestrator/<problem>/adapter.py`, create solver classes in `RLOrchestrator/<problem>/solvers/`, and register everything in `problems/registry.py` via a `ProblemDefinition`.
+- Always instantiate adapters/solvers through `instantiate_problem(...)` so the resulting `ProblemBundle` (problem + `StageBinding`s) can plug straight into `OrchestratorEnv`. This keeps wiring consistent across training/eval scripts.
+- Create problem-specific RL entry points under `RLOrchestrator/<problem>/rl/` that consume the shared environment and bundle builder rather than importing solver modules directly.

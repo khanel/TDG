@@ -1,44 +1,42 @@
 """
-Registry for external solver classes (Core-compatible).
-Maps solver names to their SearchAlgorithm classes (e.g., from TSP/solvers/ or GWO/).
+Registry for discovering and categorizing solver classes.
 """
 
-from typing import Dict, Type, Any
+from typing import Dict, List, Type
+
 from Core.search_algorithm import SearchAlgorithm
 
+from ..problems.registry import list_problem_definitions, ProblemDefinition, SolverFactory
 
-_solver_registry: Dict[str, Dict[str, Type[SearchAlgorithm]]] = {
-    "exploration": {},
-    "exploitation": {},
-}
+_solver_registry: Dict[str, Dict[str, List[Type[SearchAlgorithm]]]] = {}
 
 
-def register_exploration_solver(name: str, solver_class: Type[SearchAlgorithm]) -> None:
-    """Register an exploration solver class."""
-    _solver_registry["exploration"][name] = solver_class
+def _discover_solvers():
+    """Load solver classes directly from registered ProblemDefinitions."""
+    if _solver_registry:
+        return
 
+    definitions = list_problem_definitions()
+    for problem_name, definition in definitions.items():
+        stage_map: Dict[str, List[Type[SearchAlgorithm]]] = {
+            "exploration": [],
+            "exploitation": [],
+        }
+        for phase, factory in (definition.solvers or {}).items():
+            cls = factory.cls if isinstance(factory, SolverFactory) else None
+            if not cls or not issubclass(cls, SearchAlgorithm):
+                continue
+            stage_map.setdefault(phase, []).append(cls)
+        _solver_registry[problem_name] = stage_map
 
-def register_exploitation_solver(name: str, solver_class: Type[SearchAlgorithm]) -> None:
-    """Register an exploitation solver class."""
-    _solver_registry["exploitation"][name] = solver_class
+def get_solver_registry() -> Dict[str, Dict[str, List[Type[SearchAlgorithm]]]]:
+    """Return the full solver registry, discovering solvers if not already done."""
+    _discover_solvers()
+    return _solver_registry
 
-
-def get_exploration_solver(name: str) -> Type[SearchAlgorithm]:
-    """Get an exploration solver class by name."""
-    return _solver_registry["exploration"].get(name)
-
-
-def get_exploitation_solver(name: str) -> Type[SearchAlgorithm]:
-    """Get an exploitation solver class by name."""
-    return _solver_registry["exploitation"].get(name)
-
-
-def get_solver_registry() -> Dict[str, Dict[str, Type[SearchAlgorithm]]]:
-    """Return the full solver registry."""
-    return _solver_registry.copy()
-
-
-# Example registrations (external solvers should call these)
-# register_exploration_solver("map_elites", TSPMapElitesSolver)
-
-# register_exploitation_solver("gwo", GrayWolfOptimization)
+def get_solvers(problem: str, phase: str) -> List[Type[SearchAlgorithm]]:
+    """
+    Get a list of available solver classes for a given problem and phase.
+    """
+    registry = get_solver_registry()
+    return registry.get(problem, {}).get(phase, [])
