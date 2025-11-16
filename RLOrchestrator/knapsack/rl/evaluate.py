@@ -10,12 +10,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from stable_baselines3 import PPO
 
-from ...core.orchestrator import Orchestrator
 from ...core.utils import parse_int_range, parse_float_range, setup_logging
 from ...core.env_factory import create_env
-from ..adapter import KnapsackAdapter
-from ..solvers.explorer import KnapsackRandomExplorer
-from ..solvers.local_search import KnapsackLocalSearch
+from ...problems.registry import instantiate_problem
 from ...rl.eval_logging import EvaluationLogger, StepRecord, EpisodeSummary
 
 
@@ -36,6 +33,14 @@ def _plot_fitness_history(steps: list[int], history: list[float], switch_steps: 
     fig.tight_layout()
     fig.savefig(save_path, dpi=150)
     plt.close(fig)
+
+
+def _stage_map(stages):
+    mapping = {binding.name: binding.solver for binding in stages}
+    missing = {"exploration", "exploitation"} - mapping.keys()
+    if missing:
+        raise ValueError(f"Problem bundle missing stages: {sorted(missing)}")
+    return mapping
 
 
 def main():
@@ -63,34 +68,36 @@ def main():
     value_range = parse_float_range(args.knapsack_value_range, label="knapsack-value-range")
     weight_range = parse_float_range(args.knapsack_weight_range, label="knapsack-weight-range")
 
-    problem = KnapsackAdapter(
-        n_items=num_items_range,
-        value_range=value_range,
-        weight_range=weight_range,
-        capacity_ratio=args.knapsack_capacity_ratio,
-        seed=args.knapsack_seed,
+    adapter_kwargs = {
+        "n_items": num_items_range,
+        "value_range": value_range,
+        "weight_range": weight_range,
+        "capacity_ratio": args.knapsack_capacity_ratio,
+        "seed": args.knapsack_seed,
+    }
+    solver_overrides = {
+        "exploration": {
+            "population_size": 64,
+            "flip_probability": 0.15,
+            "elite_fraction": 0.25,
+            "seed": args.knapsack_seed,
+        },
+        "exploitation": {
+            "population_size": 16,
+            "moves_per_step": 8,
+            "escape_probability": 0.05,
+            "seed": args.knapsack_seed,
+        },
+    }
+    bundle = instantiate_problem(
+        "knapsack",
+        adapter_kwargs=adapter_kwargs,
+        solver_kwargs=solver_overrides,
     )
-
-    exploration = KnapsackRandomExplorer(
-        problem,
-        population_size=64,
-        flip_probability=0.15,
-        elite_fraction=0.25,
-        seed=args.knapsack_seed,
-    )
-    exploitation = KnapsackLocalSearch(
-        problem,
-        population_size=16,
-        moves_per_step=8,
-        escape_probability=0.05,
-        seed=args.knapsack_seed,
-    )
-    for solver in (exploration, exploitation):
+    stage_map = _stage_map(bundle.stages)
+    for solver in stage_map.values():
         if hasattr(solver, "initialize"):
             solver.initialize()
-
-    orchestrator = Orchestrator(problem, exploration, exploitation, start_phase="exploration")
-    orchestrator._update_best()
 
     session_id = int(time.time())
     logger = setup_logging('eval', 'knapsack', log_dir=(args.log_dir or 'logs'), session_id=session_id)
@@ -98,9 +105,9 @@ def main():
     max_decision_spec = parse_int_range(args.max_decisions, min_value=1, label="max-decisions")
     search_step_spec = parse_int_range(args.search_steps_per_decision, min_value=1, label="search-steps-per-decision")
     env = create_env(
-        problem,
-        exploration,
-        exploitation,
+        bundle.problem,
+        stage_map["exploration"],
+        stage_map["exploitation"],
         max_decision_steps=max_decision_spec,
         search_steps_per_decision=search_step_spec,
         max_search_steps=args.max_search_steps,
@@ -135,11 +142,11 @@ def main():
         episode_best_fitness = float("inf")
 
         # Per-episode meta snapshot
-        dim = int(env.orchestrator.problem.get_problem_info().get("dimension", 0))
+        dim = int(env.problem.get_problem_info().get("dimension", 0))
         logger.info(f"Episode {episode_idx} started. Dimension: {dim}")
 
         while not done:
-            phase_before = env.orchestrator.get_phase()
+            phase_before = env.get_phase()
             action, _ = model.predict(obs, deterministic=args.deterministic)
             if int(action) == 1 and phase_before == "exploration":
                 episode_switch_steps.append(step_idx)
@@ -152,13 +159,13 @@ def main():
                     )
                 except Exception:
                     pass
-            prev_best = env.orchestrator.get_best_solution()
+            prev_best = env.get_best_solution()
             prev_best_fit = prev_best.fitness if prev_best else None
             obs, reward, terminated, truncated, _ = env.step(int(action))
             done = terminated or truncated
             ep_return += reward
-            candidate = env.orchestrator.get_best_solution()
-            phase_after = env.orchestrator.get_phase()
+            candidate = env.get_best_solution()
+            phase_after = env.get_phase()
             improvement = None
             if prev_best_fit is not None and candidate and candidate.fitness is not None:
                 improvement = float(prev_best_fit - candidate.fitness)
@@ -175,7 +182,8 @@ def main():
 
         returns.append(ep_return)
         if episode_best_solution is None:
-            episode_best_solution = env.orchestrator.get_best_solution().copy()
+            current_best = env.get_best_solution()
+            episode_best_solution = current_best.copy() if current_best is not None else None
             episode_best_fitness = episode_best_solution.fitness if episode_best_solution else float("inf")
 
         episodes_info.append({

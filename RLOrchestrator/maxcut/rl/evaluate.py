@@ -11,11 +11,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from stable_baselines3 import PPO
 
-from ...core.orchestrator import Orchestrator
 from ...core.utils import parse_int_range, setup_logging
 from ...core.env_factory import create_env
-from ...maxcut.adapter import MaxCutAdapter
-from ...maxcut.solvers import MaxCutRandomExplorer, MaxCutLocalSearch
+from ...problems.registry import instantiate_problem
 from ...rl.eval_logging import EvaluationLogger, StepRecord, EpisodeSummary
 
 
@@ -34,6 +32,14 @@ def _load_weights(path: Optional[str]) -> Optional[np.ndarray]:
             raise ValueError(f"NPZ file {file_path} must contain array 'arr_0'")
         return np.asarray(data, dtype=float)
     return np.loadtxt(file_path, dtype=float)
+
+
+def _stage_map(stages):
+    mapping = {binding.name: binding.solver for binding in stages}
+    missing = {"exploration", "exploitation"} - mapping.keys()
+    if missing:
+        raise ValueError(f"Problem bundle missing stages: {sorted(missing)}")
+    return mapping
 
 
 def _plot_partition(weights: np.ndarray, mask: np.ndarray, save_path: Path) -> None:
@@ -80,34 +86,36 @@ def main():
 
     model = PPO.load(args.model_path)
     weights = _load_weights(args.weights_file)
-    problem = MaxCutAdapter(
-        weight_matrix=weights,
-        n_nodes=args.n_nodes,
-        edge_probability=args.edge_probability,
-        seed=args.seed,
-        ensure_connected=args.ensure_connected,
+    adapter_kwargs = {
+        "weight_matrix": weights.tolist() if isinstance(weights, np.ndarray) else weights,
+        "n_nodes": args.n_nodes,
+        "edge_probability": args.edge_probability,
+        "seed": args.seed,
+        "ensure_connected": args.ensure_connected,
+    }
+    solver_overrides = {
+        "exploration": {
+            "population_size": 64,
+            "flip_probability": 0.15,
+            "elite_fraction": 0.25,
+            "seed": args.seed,
+        },
+        "exploitation": {
+            "population_size": 16,
+            "moves_per_step": 8,
+            "escape_probability": 0.05,
+            "seed": args.seed,
+        },
+    }
+    bundle = instantiate_problem(
+        "maxcut",
+        adapter_kwargs=adapter_kwargs,
+        solver_kwargs=solver_overrides,
     )
-
-    exploration = MaxCutRandomExplorer(
-        problem,
-        population_size=64,
-        flip_probability=0.15,
-        elite_fraction=0.25,
-        seed=args.seed,
-    )
-    exploitation = MaxCutLocalSearch(
-        problem,
-        population_size=16,
-        moves_per_step=8,
-        escape_probability=0.05,
-        seed=args.seed,
-    )
-    for solver in (exploration, exploitation):
+    stage_map = _stage_map(bundle.stages)
+    for solver in stage_map.values():
         if hasattr(solver, "initialize"):
             solver.initialize()
-
-    orchestrator = Orchestrator(problem, exploration, exploitation, start_phase="exploration")
-    orchestrator._update_best()
 
     session_id = int(time.time())
     logger = setup_logging('eval', 'maxcut', log_dir=(args.log_dir or 'logs'), session_id=session_id)
@@ -115,9 +123,9 @@ def main():
     max_decision_spec = parse_int_range(args.max_decisions, min_value=1, label="max-decisions")
     search_step_spec = parse_int_range(args.search_steps_per_decision, min_value=1, label="search-steps-per-decision")
     env = create_env(
-        problem,
-        exploration,
-        exploitation,
+        bundle.problem,
+        stage_map["exploration"],
+        stage_map["exploitation"],
         max_decision_steps=max_decision_spec,
         search_steps_per_decision=search_step_spec,
         max_search_steps=args.max_search_steps,
@@ -152,11 +160,11 @@ def main():
         episode_best_fitness = float("inf")
 
         # Episode meta snapshot
-        n_nodes = int(env.orchestrator.problem.get_problem_info().get("dimension", 0))
+        n_nodes = int(env.problem.get_problem_info().get("dimension", 0))
         logger.info(f"Episode {episode_idx} started. Num nodes: {n_nodes}")
 
         while not done:
-            phase_before = env.orchestrator.get_phase()
+            phase_before = env.get_phase()
             action, _ = model.predict(obs, deterministic=args.deterministic)
             if int(action) == 1 and phase_before == "exploration":
                 episode_switch_steps.append(step_idx)
@@ -169,13 +177,13 @@ def main():
                     )
                 except Exception:
                     pass
-            prev_best = env.orchestrator.get_best_solution()
+            prev_best = env.get_best_solution()
             prev_best_fit = prev_best.fitness if prev_best else None
             obs, reward, terminated, truncated, _ = env.step(int(action))
             done = terminated or truncated
             ep_return += reward
-            candidate = env.orchestrator.get_best_solution()
-            phase_after = env.orchestrator.get_phase()
+            candidate = env.get_best_solution()
+            phase_after = env.get_phase()
             improvement = None
             if prev_best_fit is not None and candidate and candidate.fitness is not None:
                 improvement = float(prev_best_fit - candidate.fitness)
@@ -192,9 +200,10 @@ def main():
         returns.append(ep_return)
 
         if episode_best_solution is None:
-            episode_best_solution = env.orchestrator.get_best_solution().copy()
+            current_best = env.get_best_solution()
+            episode_best_solution = current_best.copy() if current_best is not None else None
             episode_best_fitness = episode_best_solution.fitness if episode_best_solution else float("inf")
-        weights_snapshot = np.asarray(env.orchestrator.problem.maxcut_problem.weights, dtype=float).copy()
+        weights_snapshot = np.asarray(env.problem.maxcut_problem.weights, dtype=float).copy()
         episodes_info.append({
             "index": episode_idx,
             "solution": episode_best_solution,

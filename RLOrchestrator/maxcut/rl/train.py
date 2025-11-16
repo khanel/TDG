@@ -8,11 +8,12 @@ from pathlib import Path
 
 import numpy as np
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import CallbackList, ProgressBarCallback
+from stable_baselines3.common.callbacks import CallbackList
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
-from ...core.orchestrator import Orchestrator
+from ...core.env_factory import create_env
 from ...core.utils import parse_int_range, setup_logging
+from ...problems.registry import instantiate_problem
 from ...rl.callbacks import PeriodicBestCheckpoint
 
 def main():
@@ -63,40 +64,41 @@ def main():
 
     def make_env_fn(rank: int):
         def _init():
-            from ...core.orchestrator import Orchestrator
-            from ...core.env_factory import create_env
-            from ...maxcut.adapter import MaxCutAdapter
-            from ...maxcut.solvers import MaxCutRandomExplorer, MaxCutLocalSearch
-
             seed = args.seed + rank if args.seed is not None else None
-            problem = MaxCutAdapter(
-                weight_matrix=weight_matrix,
-                n_nodes=args.n_nodes,
-                edge_probability=args.edge_probability,
-                seed=seed,
-                ensure_connected=args.ensure_connected,
+            adapter_kwargs = {
+                "weight_matrix": weight_matrix.tolist() if isinstance(weight_matrix, np.ndarray) else weight_matrix,
+                "n_nodes": args.n_nodes,
+                "edge_probability": args.edge_probability,
+                "seed": seed,
+                "ensure_connected": args.ensure_connected,
+            }
+            solver_overrides = {
+                "exploration": {
+                    "population_size": max(1, args.exploration_population),
+                    "flip_probability": 0.15,
+                    "elite_fraction": 0.25,
+                    "seed": seed,
+                },
+                "exploitation": {
+                    "population_size": max(1, args.exploitation_population),
+                    "moves_per_step": 8,
+                    "escape_probability": 0.05,
+                    "seed": seed,
+                },
+            }
+            bundle = instantiate_problem(
+                "maxcut",
+                adapter_kwargs=adapter_kwargs,
+                solver_kwargs=solver_overrides,
             )
-            exploration = MaxCutRandomExplorer(
-                problem,
-                population_size=max(1, args.exploration_population),
-                flip_probability=0.15,
-                elite_fraction=0.25,
-                seed=seed,
-            )
-            exploitation = MaxCutLocalSearch(
-                problem,
-                population_size=max(1, args.exploitation_population),
-                moves_per_step=8,
-                escape_probability=0.05,
-                seed=seed,
-            )
-            for solver in (exploration, exploitation):
+            stage_map = _stage_map(bundle.stages)
+            exploration = stage_map["exploration"]
+            exploitation = stage_map["exploitation"]
+            for solver in stage_map.values():
                 if hasattr(solver, "initialize"):
                     solver.initialize()
-            orchestrator = Orchestrator(problem, exploration, exploitation, start_phase="exploration")
-            orchestrator._update_best()
             env = create_env(
-                problem,
+                bundle.problem,
                 exploration,
                 exploitation,
                 max_decision_steps=max_decision_spec,
@@ -168,6 +170,14 @@ def main():
 
     model.save(output_path)
     env.close()
+
+
+def _stage_map(stages):
+    mapping = {binding.name: binding.solver for binding in stages}
+    missing = {"exploration", "exploitation"} - mapping.keys()
+    if missing:
+        raise ValueError(f"Problem bundle missing stages: {sorted(missing)}")
+    return mapping
 
 
 if __name__ == "__main__":
