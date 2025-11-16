@@ -14,6 +14,7 @@ from Core.search_algorithm import SearchAlgorithm
 
 class NKLRandomExplorer(SearchAlgorithm):
     """Maintains a diverse population via vectorized random bit flips."""
+    phase = 'exploration'
 
     def __init__(
         self,

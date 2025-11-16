@@ -1,6 +1,6 @@
 """Knapsack solver implementations."""
 
 from .explorer import KnapsackRandomExplorer
-from .local_search import KnapsackLocalSearch
+from .exploiter import KnapsackBitFlipExploiter
 
-__all__ = ["KnapsackRandomExplorer", "KnapsackLocalSearch"]
+__all__ = ["KnapsackRandomExplorer", "KnapsackBitFlipExploiter"]

@@ -14,6 +14,7 @@ from Core.search_algorithm import SearchAlgorithm
 
 class MaxCutRandomExplorer(SearchAlgorithm):
     """Maintains a diverse population by flipping bits with controlled probability."""
+    phase = 'exploration'
 
     def __init__(
         self,
