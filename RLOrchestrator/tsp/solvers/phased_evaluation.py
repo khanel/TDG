@@ -9,9 +9,7 @@ from typing import Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ...core.orchestrator import Orchestrator
-from ...tsp.adapter import TSPAdapter
-from ...tsp.solvers import TSPMapElites, TSPParticleSwarm
+from ...problems.registry import instantiate_problem
 
 
 def _load_array(path: Optional[str]) -> Optional[np.ndarray]:
@@ -66,6 +64,14 @@ def _parse_num_cities_spec(value: str) -> Tuple[int, int]:
     return (num, num)
 
 
+def _stage_map(stages):
+    mapping = {binding.name: binding.solver for binding in stages}
+    missing = {"exploration", "exploitation"} - mapping.keys()
+    if missing:
+        raise ValueError(f"Problem bundle missing stages: {sorted(missing)}")
+    return mapping
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int, default=1)
@@ -84,51 +90,50 @@ def main():
     dist_arr = _load_array(args.tsp_distance_file)
     num_cities_range = _parse_num_cities_spec(args.tsp_num_cities)
 
-    problem = TSPAdapter(
-        num_cities=num_cities_range,
-        grid_size=args.tsp_grid_size,
-        seed=args.tsp_seed,
-        coords=coords_arr.tolist() if coords_arr is not None else None,
-        distance_matrix=dist_arr.tolist() if dist_arr is not None else None,
-    )
-
     exploration_steps = args.max_search_steps // 2
     exploitation_steps = max(1, args.max_search_steps - exploration_steps)
     episodes_info: list[dict] = []
+    base_adapter_kwargs = {
+        "num_cities": num_cities_range,
+        "grid_size": args.tsp_grid_size,
+        "coords": coords_arr.tolist() if coords_arr is not None else None,
+        "distance_matrix": dist_arr.tolist() if dist_arr is not None else None,
+    }
+    base_solver_overrides = {
+        "exploration": {
+            "population_size": 32,
+            "bins_per_dim": (16, 16),
+            "random_injection_rate": 0.15,
+        },
+        "exploitation": {
+            "population_size": 32,
+            "omega": 0.7,
+            "c1": 1.5,
+            "c2": 1.5,
+            "vmax": 0.5,
+        },
+    }
 
     for episode_idx in range(1, max(1, args.episodes) + 1):
         episode_seed = args.tsp_seed + episode_idx
 
-        problem = TSPAdapter(
-            num_cities=num_cities_range,
-            grid_size=args.tsp_grid_size,
-            seed=episode_seed,
-            coords=coords_arr.tolist() if coords_arr is not None else None,
-            distance_matrix=dist_arr.tolist() if dist_arr is not None else None,
+        adapter_kwargs = dict(base_adapter_kwargs)
+        adapter_kwargs["seed"] = episode_seed
+        solver_overrides = {
+            "exploration": dict(base_solver_overrides["exploration"], seed=episode_seed),
+            "exploitation": dict(base_solver_overrides["exploitation"], seed=episode_seed),
+        }
+        bundle = instantiate_problem(
+            "tsp",
+            adapter_kwargs=adapter_kwargs,
+            solver_kwargs=solver_overrides,
         )
-
-        exploration = TSPMapElites(
-            problem,
-            population_size=32,
-            bins_per_dim=(16, 16),
-            random_injection_rate=0.15,
-            seed=episode_seed,
-        )
-        exploitation = TSPParticleSwarm(
-            problem,
-            population_size=32,
-            omega=0.7,
-            c1=1.5,
-            c2=1.5,
-            vmax=0.5,
-            seed=episode_seed,
-        )
-        for solver in (exploration, exploitation):
+        stage_map = _stage_map(bundle.stages)
+        exploration = stage_map["exploration"]
+        exploitation = stage_map["exploitation"]
+        for solver in stage_map.values():
             if hasattr(solver, "initialize"):
                 solver.initialize()
-
-        orchestrator = Orchestrator(problem, exploration, exploitation, start_phase="exploration")
-        orchestrator._update_best()
 
         episode_steps: list[int] = []
         episode_fitness: list[float] = []
@@ -137,8 +142,8 @@ def main():
 
         # Exploration phase
         for step_idx in range(exploration_steps):
-            orchestrator.step()
-            candidate = orchestrator.get_best_solution()
+            exploration.step()
+            candidate = exploration.get_best_solution()
             if candidate and candidate.fitness is not None:
                 episode_steps.append(step_idx)
                 episode_fitness.append(candidate.fitness)
@@ -147,16 +152,19 @@ def main():
                     episode_best_fitness = candidate.fitness
 
         # Switch to exploitation, seeding with the best solution from exploration
-        best_exploration_solution = orchestrator.get_best_solution()
+        seeds = []
+        best_exploration_solution = exploration.get_best_solution()
         if best_exploration_solution:
-            orchestrator.switch_to_exploitation(seeds=[best_exploration_solution])
+            seeds.append(best_exploration_solution)
         else:
-            orchestrator.switch_to_exploitation()  # Fallback if no solution found
+            seeds.extend(exploration.export_population())
+        if hasattr(exploitation, "ingest_population"):
+            exploitation.ingest_population(seeds)
 
         # Exploitation phase
         for step_idx in range(exploration_steps, args.max_search_steps):
-            orchestrator.step()
-            candidate = orchestrator.get_best_solution()
+            exploitation.step()
+            candidate = exploitation.get_best_solution()
             if candidate and candidate.fitness is not None:
                 episode_steps.append(step_idx)
                 episode_fitness.append(candidate.fitness)
@@ -165,10 +173,11 @@ def main():
                     episode_best_fitness = candidate.fitness
         
         if episode_best_solution is None:
-            episode_best_solution = orchestrator.get_best_solution().copy()
+            candidate = exploitation.get_best_solution() or exploration.get_best_solution()
+            episode_best_solution = candidate.copy() if candidate is not None else None
             episode_best_fitness = episode_best_solution.fitness if episode_best_solution else float("inf")
 
-        coords_snapshot = np.asarray(orchestrator.problem.tsp_problem.city_coords, dtype=float).copy()
+        coords_snapshot = np.asarray(bundle.problem.tsp_problem.city_coords, dtype=float).copy()
         episodes_info.append({
             "index": episode_idx,
             "solution": episode_best_solution,

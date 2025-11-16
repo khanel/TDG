@@ -3,11 +3,10 @@ Environment wiring for the Traveling Salesperson Problem (TSP).
 """
 
 from typing import Optional
+
 from ..core.env_factory import create_env
 from ..core.orchestrator import OrchestratorEnv
-from .adapter import TSPAdapter
-from .solvers.map_elites import TSPMapElites
-from .solvers.pso import TSPParticleSwarm
+from ..problems.registry import instantiate_problem
 
 def build_tsp_env(
     num_cities: int = 20,
@@ -33,16 +32,24 @@ def build_tsp_env(
     Returns:
         A configured OrchestratorEnv instance for TSP.
     """
-    # 1. Create the problem instance using the adapter
-    problem = TSPAdapter(num_cities=num_cities, grid_size=grid_size)
+    bundle = instantiate_problem(
+        "tsp",
+        adapter_kwargs={
+            "num_cities": num_cities,
+            "grid_size": grid_size,
+        },
+    )
+    stage_map = {binding.name: binding.solver for binding in bundle.stages}
+    if "exploration" not in stage_map or "exploitation" not in stage_map:
+        raise ValueError("TSP problem definition must provide exploration and exploitation solvers.")
+    exploration_solver = stage_map["exploration"]
+    exploitation_solver = stage_map["exploitation"]
+    for solver in stage_map.values():
+        if hasattr(solver, "initialize"):
+            solver.initialize()
 
-    # 2. Instantiate the solvers
-    exploration_solver = TSPMapElites(problem)
-    exploitation_solver = TSPParticleSwarm(problem)
-
-    # 3. Use the factory to create the environment
     env = create_env(
-        problem=problem,
+        problem=bundle.problem,
         exploration_solver=exploration_solver,
         exploitation_solver=exploitation_solver,
         max_decision_steps=max_decision_steps,

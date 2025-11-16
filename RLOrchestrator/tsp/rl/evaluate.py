@@ -11,11 +11,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from stable_baselines3 import PPO
 
-from ...core.orchestrator import Orchestrator
 from ...core.utils import parse_int_range, setup_logging
 from ...core.env_factory import create_env
-from ...tsp.adapter import TSPAdapter
-from ...tsp.solvers import TSPMapElites, TSPParticleSwarm
+from ...problems.registry import instantiate_problem
 from ...rl.eval_logging import EvaluationLogger, StepRecord, EpisodeSummary, DEFAULT_OBS_NAMES
 
 
@@ -71,6 +69,14 @@ def _parse_num_cities_spec(value: str) -> Tuple[int, int]:
     return (num, num)
 
 
+def _stage_map(stages):
+    mapping = {binding.name: binding.solver for binding in stages}
+    missing = {"exploration", "exploitation"} - mapping.keys()
+    if missing:
+        raise ValueError(f"Problem bundle missing stages: {sorted(missing)}")
+    return mapping
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str, default="ppo_tsp.zip")
@@ -97,45 +103,48 @@ def main():
     dist_arr = _load_array(args.tsp_distance_file)
     num_cities_range = _parse_num_cities_spec(args.tsp_num_cities)
 
-    problem = TSPAdapter(
-        num_cities=num_cities_range,
-        grid_size=args.tsp_grid_size,
-        seed=args.tsp_seed,
-        coords=coords_arr.tolist() if coords_arr is not None else None,
-        distance_matrix=dist_arr.tolist() if dist_arr is not None else None,
+    adapter_kwargs = {
+        "num_cities": num_cities_range,
+        "grid_size": args.tsp_grid_size,
+        "seed": args.tsp_seed,
+        "coords": coords_arr.tolist() if coords_arr is not None else None,
+        "distance_matrix": dist_arr.tolist() if dist_arr is not None else None,
+    }
+    solver_overrides = {
+        "exploration": {
+            "population_size": 32,
+            "bins_per_dim": (16, 16),
+            "random_injection_rate": 0.15,
+            "seed": args.tsp_seed,
+        },
+        "exploitation": {
+            "population_size": 32,
+            "omega": 0.7,
+            "c1": 1.5,
+            "c2": 1.5,
+            "vmax": 0.5,
+            "seed": args.tsp_seed,
+        },
+    }
+    bundle = instantiate_problem(
+        "tsp",
+        adapter_kwargs=adapter_kwargs,
+        solver_kwargs=solver_overrides,
     )
-
-    exploration = TSPMapElites(
-        problem,
-        population_size=32,
-        bins_per_dim=(16, 16),
-        random_injection_rate=0.15,
-        seed=args.tsp_seed,
-    )
-    exploitation = TSPParticleSwarm(
-        problem,
-        population_size=32,
-        omega=0.7,
-        c1=1.5,
-        c2=1.5,
-        vmax=0.5,
-        seed=args.tsp_seed,
-    )
-    for solver in (exploration, exploitation):
+    stage_map = _stage_map(bundle.stages)
+    for solver in stage_map.values():
         if hasattr(solver, "initialize"):
             solver.initialize()
 
-    orchestrator = Orchestrator(problem, exploration, exploitation, start_phase="exploration")
-    orchestrator._update_best()
     session_id = int(time.time())
     logger = setup_logging('eval', 'tsp', log_dir=(args.log_dir or 'logs'), session_id=session_id)
 
     max_decision_spec = parse_int_range(args.max_decisions, min_value=1, label="max-decisions")
     search_step_spec = parse_int_range(args.search_steps_per_decision, min_value=1, label="search-steps-per-decision")
     env = create_env(
-        problem,
-        exploration,
-        exploitation,
+        bundle.problem,
+        stage_map["exploration"],
+        stage_map["exploitation"],
         max_decision_steps=max_decision_spec,
         search_steps_per_decision=search_step_spec,
         max_search_steps=args.max_search_steps,
@@ -170,11 +179,11 @@ def main():
         episode_best_fitness = float("inf")
 
         # Per-episode meta snapshot
-        coords_snapshot = np.asarray(env.orchestrator.problem.tsp_problem.city_coords, dtype=float).copy()
+        coords_snapshot = np.asarray(env.problem.tsp_problem.city_coords, dtype=float).copy()
         logger.info(f"Episode {episode_idx} started. Num cities: {int(coords_snapshot.shape[0])}")
 
         while not done:
-            phase_before = env.orchestrator.get_phase()
+            phase_before = env.get_phase()
             action, _ = model.predict(obs, deterministic=args.deterministic)
             if int(action) == 1 and phase_before == "exploration":
                 episode_switch_steps.append(step_idx)
@@ -187,13 +196,13 @@ def main():
                     )
                 except Exception:
                     pass
-            prev_best = env.orchestrator.get_best_solution()
+            prev_best = env.get_best_solution()
             prev_best_fit = prev_best.fitness if prev_best else None
             obs, reward, terminated, truncated, _ = env.step(int(action))
             done = terminated or truncated
             ep_return += reward
-            candidate = env.orchestrator.get_best_solution()
-            phase_after = env.orchestrator.get_phase()
+            candidate = env.get_best_solution()
+            phase_after = env.get_phase()
             improvement = None
             if prev_best_fit is not None and candidate and candidate.fitness is not None:
                 improvement = float(prev_best_fit - candidate.fitness)
@@ -214,7 +223,8 @@ def main():
 
         returns.append(ep_return)
         if episode_best_solution is None:
-            episode_best_solution = env.orchestrator.get_best_solution().copy()
+            current_best = env.get_best_solution()
+            episode_best_solution = current_best.copy() if current_best is not None else None
             episode_best_fitness = episode_best_solution.fitness if episode_best_solution else float("inf")
         episodes_info.append({
             "index": episode_idx,
