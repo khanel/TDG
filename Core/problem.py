@@ -101,6 +101,27 @@ class ProblemInterface(abc.ABC):
         """
         pass
 
+    def get_bounds(self) -> Dict[str, Any]:
+        """
+        Optional hook to expose domain bounds (continuous or discrete).
+        Subclasses can override this for richer metadata; default returns an empty dict.
+        """
+        return {}
+
+    def regenerate_instance(self) -> bool:
+        """
+        Optional hook that lets problems randomize/reset their underlying instance.
+        Returns True if a new instance was generated, False otherwise.
+        """
+        return False
+
+    def repair_mask(self, mask: list[int] | Any) -> list[int] | Any:
+        """
+        Optional repair function for binary masks/representations (e.g., knapsack feasibility).
+        Defaults to returning the mask unchanged.
+        """
+        return mask
+
     def get_initial_population(self, population_size: int) -> list[Solution]:
         """
         Generates an initial population of solutions.
@@ -113,6 +134,22 @@ class ProblemInterface(abc.ABC):
             A list of Solution objects.
         """
         return [self.get_initial_solution() for _ in range(population_size)]
+
+    def sample_neighbors(self, solution: Solution, k: int, **kwargs) -> list[Solution]:
+        """
+        Generates k neighbors of a given solution.
+        This is an optional method for the probe API.
+        Subclasses should override this to provide meaningful neighbor generation.
+        
+        Args:
+            solution: The solution to generate neighbors for.
+            k: The number of neighbors to generate.
+            
+        Returns:
+            A list of k neighboring Solution objects.
+        """
+        # Default implementation returns k random solutions, which is a weak proxy.
+        return [self.get_initial_solution() for _ in range(k)]
 
     # Optional: Add methods for logging or visualization if common across problems
     # def log_statistics(self, population: list[Solution], iteration: int): pass

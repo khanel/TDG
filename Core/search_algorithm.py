@@ -6,6 +6,8 @@ class SearchAlgorithm(abc.ABC):
     """
     Abstract base class for search algorithms.
     """
+    # Optional metadata describing the solver's phase (exploration/exploitation).
+    phase: Optional[str] = None
 
     def __init__(self, problem: ProblemInterface, population_size: int, **kwargs):
         """
@@ -71,6 +73,53 @@ class SearchAlgorithm(abc.ABC):
     def get_best(self) -> Optional[Solution]:
         """Return best-so-far (compat name)."""
         return self.get_best_solution()
+
+    def ingest_population(self, seeds: List[Solution]) -> None:
+        """
+        Default ingress for external seeds when switching stages.
+        Copies the provided seeds and pads/repeats as necessary.
+        """
+        if not seeds:
+            return
+
+        clones: List[Solution] = []
+        for sol in seeds:
+            if sol is None:
+                continue
+            clone = sol.copy(preserve_id=False)
+            # Ensure cloned solutions have evaluated fitness to avoid downstream laziness.
+            if clone.fitness is None:
+                clone.evaluate()
+            clones.append(clone)
+
+        if not clones:
+            return
+
+        base = list(clones)
+        while len(clones) < self.population_size:
+            template = base[len(clones) % len(base)]
+            clones.append(template.copy(preserve_id=False))
+
+        self.population = clones[: self.population_size]
+        self._update_best_solution()
+
+    def export_population(self) -> List[Solution]:
+        """
+        Return detached copies of the current population so consumers don't mutate our state.
+        """
+        exports: List[Solution] = []
+        for sol in self.population:
+            if sol is None:
+                continue
+            clone = sol.copy(preserve_id=False)
+            exports.append(clone)
+        return exports
+
+    def ensure_population_evaluated(self) -> None:
+        """Lazily evaluate any unevaluated individuals in-place."""
+        for sol in self.population:
+            if sol is not None and sol.fitness is None:
+                sol.evaluate()
 
     # Optional: Add methods for convergence checks or state reporting
     # def is_converged(self, max_iterations: int, desired_fitness: float) -> bool: pass
