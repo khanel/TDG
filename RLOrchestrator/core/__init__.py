@@ -4,12 +4,15 @@ This package is now aligned with root Core/ APIs. Use Core.problem and Core.sear
 as the canonical interfaces. The Orchestrator here wraps Core search algorithms.
 """
 
-from .orchestrator import Orchestrator
+from .context import BudgetSpec, OrchestratorContext, StageBinding
+from .orchestrator import OrchestratorEnv
 from .observation import ObservationComputer
 from .reward import RewardComputer
+from .stage_controller import StageController
 from .utils import *
 
 __all__ = [
-    'Orchestrator',
+    'BudgetSpec', 'OrchestratorContext', 'StageBinding',
+    'StageController', 'OrchestratorEnv',
     'ObservationComputer', 'RewardComputer',
 ]
