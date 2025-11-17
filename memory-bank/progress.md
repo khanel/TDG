@@ -3,20 +3,21 @@
 ## What Works
 
 -   **Core Framework:** The `OrchestratorEnv` is fully implemented, providing a stable foundation for experimentation.
--   **Component-Based Design:** The `ObservationComputer` and `RewardComputer` are implemented with minimal, well-defined feature sets.
--   **Centralized Configuration:** The `create_env` factory and problem-specific `build_tsp_env` function ensure consistent and maintainable environment setup.
--   **Documentation:** A comprehensive set of design documents exists for all major components, and the Memory Bank is fully up-to-date.
+-   **Component-Based Design:** The `ObservationComputer` and `RewardComputer` are implemented with a minimal, well-defined 6D feature set.
+-   **Centralized Configuration:** The `create_env` factory ensures consistent and maintainable environment setup.
+-   **Dynamic Discovery:** The problem and solver registries dynamically discover available components.
 
 ## What's Left to Build
 
--   The generalized training loop (`train_generalized.py`) that uses the dynamic episode configuration.
--   An experimentation framework for comparing different observation/reward schemes and baselines.
--   Adapters and wiring for additional problems beyond TSP (e.g., MaxCut, Knapsack).
+-   A structured experimentation framework as defined in `docs/experiment_methodology.md`.
+-   A training script for the baseline 6D policy.
+-   An evaluation script to benchmark the 6D policy and collect comprehensive metrics.
+-   Adapters and wiring for additional problems beyond TSP, MaxCut, and Knapsack.
 
 ## Current Status
 
--   **Phase:** End of Initial Implementation. Ready for Experimentation.
--   **Next Milestone:** Implement the generalized training loop and run the first baseline experiment.
+-   **Phase:** Ready to establish the 6D baseline.
+-   **Next Milestone:** Implement the necessary scripts to train and evaluate the baseline 6D policy.
 
 ## Known Issues
 

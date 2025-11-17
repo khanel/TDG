@@ -5,12 +5,24 @@ Implements the minimal 6-dimensional observation space.
 
 import math
 from collections import deque
+from dataclasses import dataclass
 from typing import Optional, List
 
 import numpy as np
 import logging
 
+from Core.problem import Solution
 from Core.search_algorithm import SearchAlgorithm
+
+
+@dataclass
+class ObservationState:
+    """Structured snapshot of the orchestrator state for observation computation."""
+    solver: SearchAlgorithm
+    phase: str
+    step_ratio: float
+    best_solution: Optional[Solution] = None
+    population: Optional[List[Solution]] = None
 
 class ObservationComputer:
     """
@@ -55,8 +67,10 @@ class ObservationComputer:
         self.prev_normalized_best_fitness: float = 1.0
         self.improvement_velocity: float = 0.0
         self.fitness_history: deque[float] = deque(maxlen=self.stagnation_window)
+        self.prev_diversity: float = 0.0
+        self.diversity_collapse_rate: float = 0.0
         
-        self.logger.debug("ObservationComputer initialized with minimal feature set.")
+        self.logger.debug("ObservationComputer initialized.")
 
     def reset(self) -> None:
         """Reset all internal state trackers for a new episode."""
@@ -64,11 +78,16 @@ class ObservationComputer:
         self.prev_normalized_best_fitness = 1.0
         self.improvement_velocity = 0.0
         self.fitness_history.clear()
+        self.prev_diversity = 0.0
+        self.diversity_collapse_rate = 0.0
 
-    def compute(self, solver: SearchAlgorithm, phase: str, step_ratio: float) -> np.ndarray:
+    def compute(self, state: ObservationState) -> np.ndarray:
         """Compute the 6-element observation vector."""
+        solver = state.solver
+        phase = state.phase
+        step_ratio = state.step_ratio
         self.step_index += 1
-        best_solution = solver.get_best()
+        best_solution = state.best_solution or solver.get_best()
 
         # 1. budget_remaining
         budget_remaining = 1.0 - float(np.clip(step_ratio, 0.0, 1.0))
@@ -90,19 +109,28 @@ class ObservationComputer:
         stagnation = self._compute_stagnation()
 
         # 5. population_diversity
-        diversity = self._compute_population_diversity(solver)
+        population = state.population if state.population is not None else solver.get_population()
+        diversity = self._compute_population_diversity(population)
+        div_delta = self.prev_diversity - diversity
+        self.diversity_collapse_rate = (
+            self.velocity_ewma_alpha * div_delta
+            + (1.0 - self.velocity_ewma_alpha) * self.diversity_collapse_rate
+        )
+        self.prev_diversity = diversity
 
         # 6. active_phase
         active_phase = 1.0 if phase == "exploitation" else 0.0
 
-        observation = np.array([
+        features = [
             budget_remaining,
             normalized_best_fitness,
             float(np.clip(self.improvement_velocity, -1.0, 1.0)),
             stagnation,
             diversity,
             active_phase,
-        ], dtype=np.float32)
+        ]
+
+        observation = np.array(features, dtype=np.float32)
         
         self.logger.debug(f"Observation: {observation}")
         return observation
@@ -119,9 +147,8 @@ class ObservationComputer:
         
         return 0.0
 
-    def _compute_population_diversity(self, solver: SearchAlgorithm) -> float:
+    def _compute_population_diversity(self, population: Optional[List[Solution]]) -> float:
         """Computes population diversity as the mean pairwise distance."""
-        population = solver.get_population()
         if not population or len(population) < 2:
             return 0.0
         

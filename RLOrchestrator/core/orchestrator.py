@@ -16,7 +16,7 @@ import numpy as np
 from Core.problem import Solution, ProblemInterface
 from Core.search_algorithm import SearchAlgorithm
 from .context import BudgetSpec, OrchestratorContext, Phase, StageBinding
-from .observation import ObservationComputer
+from .observation import ObservationComputer, ObservationState
 from .reward import RewardComputer
 from .stage_controller import StageController
 from .utils import IntRangeSpec, setup_logging
@@ -148,11 +148,17 @@ class OrchestratorEnv(gym.Env):
 
     def _observe(self) -> np.ndarray:
         solver = self.get_current_solver()
+        phase = self.get_phase()
         max_decisions = max(1, self._context.max_decision_steps or 1)
         step_ratio = self._context.decision_count / max_decisions if max_decisions > 0 else 0.0
-        # TODO: pass a structured OrchestratorState snapshot instead of the raw solver
-        # reference so observation computation no longer needs to poke into solver internals.
-        observation = self.obs_comp.compute(solver, self.get_phase(), step_ratio)
+        state = ObservationState(
+            solver=solver,
+            phase=phase,
+            step_ratio=step_ratio,
+            best_solution=solver.get_best(),
+            population=solver.get_population(),
+        )
+        observation = self.obs_comp.compute(state)
         self.logger.debug(f"Observation at decision {self._context.decision_count}: {observation}")
         return observation
 
