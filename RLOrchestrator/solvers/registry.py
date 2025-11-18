@@ -22,11 +22,16 @@ def _discover_solvers():
             "exploration": [],
             "exploitation": [],
         }
-        for phase, factory in (definition.solvers or {}).items():
-            cls = factory.cls if isinstance(factory, SolverFactory) else None
-            if not cls or not issubclass(cls, SearchAlgorithm):
-                continue
-            stage_map.setdefault(phase, []).append(cls)
+        for phase, spec in (definition.solvers or {}).items():
+            if isinstance(spec, (list, tuple)):
+                factories = [factory for factory in spec if isinstance(factory, SolverFactory)]
+            else:
+                factories = [spec] if isinstance(spec, SolverFactory) else []
+            for factory in factories:
+                cls = factory.cls
+                if not cls or not issubclass(cls, SearchAlgorithm):
+                    continue
+                stage_map.setdefault(phase, []).append(cls)
         _solver_registry[problem_name] = stage_map
 
 def get_solver_registry() -> Dict[str, Dict[str, List[Type[SearchAlgorithm]]]]:
