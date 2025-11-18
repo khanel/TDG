@@ -152,8 +152,18 @@ def _ensure_builtin_definitions():
 
 def _register_builtin_definitions():
     from ..tsp.adapter import TSPAdapter
-    from ..tsp.solvers.map_elites import TSPMapElites
-    from ..tsp.solvers.pso import TSPParticleSwarm
+    from ..tsp.solvers import (
+        TSPArtificialBeeColony,
+        TSPGravitationalSearch,
+        TSPHarrisHawks,
+        TSPLSHADE,
+        TSPMapElites,
+        TSPMarinePredators,
+        TSPMemeticAlgorithm,
+        TSPParticleSwarm,
+        TSPSlimeMould,
+        TSPWhaleOptimization,
+    )
     from ..maxcut.adapter import MaxCutAdapter
     from ..maxcut.solvers.explorer import MaxCutRandomExplorer
     from ..maxcut.solvers.exploiter import MaxCutBitFlipExploiter
@@ -176,17 +186,36 @@ def _register_builtin_definitions():
     from ..nkl.solvers.explorer import NKLRandomExplorer
     from ..nkl.solvers.exploiter import NKLBitFlipExploiter
 
+    tsp_explorers = [
+        SolverFactory(TSPMapElites, {"population_size": 64}),
+        SolverFactory(TSPArtificialBeeColony, {"population_size": 96, "random_injection_rate": 0.25, "limit_factor": 1.2}),
+        SolverFactory(TSPGravitationalSearch, {"population_size": 64}),
+        SolverFactory(TSPHarrisHawks, {"population_size": 48, "max_iterations": 800}),
+        SolverFactory(TSPMarinePredators, {"population_size": 56, "fad_probability": 0.3}),
+        SolverFactory(TSPSlimeMould, {"population_size": 60}),
+        SolverFactory(TSPWhaleOptimization, {"population_size": 40, "b": 1.3}),
+    ]
+
+    tsp_exploiters = [
+        SolverFactory(TSPParticleSwarm, {"population_size": 48}),
+        SolverFactory(TSPMemeticAlgorithm, {"population_size": 40, "mutation_rate": 0.25, "local_search_steps": 4}),
+        SolverFactory(TSPLSHADE, {"population_size": 60}),
+        SolverFactory(TSPArtificialBeeColony, {"population_size": 64, "random_injection_rate": 0.05, "perturbation_scale": 0.25, "limit_factor": 0.8}),
+        SolverFactory(TSPHarrisHawks, {"population_size": 40, "max_iterations": 600}),
+        SolverFactory(TSPWhaleOptimization, {"population_size": 36, "b": 0.8}),
+    ]
+
     register_problem(
         ProblemDefinition(
             name="tsp",
             adapter_cls=TSPAdapter,
             default_adapter_kwargs={"num_cities": 20, "grid_size": 100.0},
             solvers={
-                "exploration": SolverFactory(TSPMapElites, {"population_size": 64}),
-                "exploitation": SolverFactory(TSPParticleSwarm, {"population_size": 32}),
+                "exploration": tsp_explorers,
+                "exploitation": tsp_exploiters,
             },
             metadata={
-                "description": "Traveling Salesperson Problem baseline configuration.",
+                "description": "TSP with randomized explorer/exploiter solver catalog.",
                 "observation_features": 6,
             },
         )
