@@ -193,8 +193,18 @@ def _register_builtin_definitions():
         KnapsackWhaleOptimization,
     )
     from ..nkl.adapter import NKLAdapter
-    from ..nkl.solvers.explorer import NKLRandomExplorer
-    from ..nkl.solvers.exploiter import NKLBitFlipExploiter
+    from ..nkl.solvers import (
+        NKLArtificialBeeColony,
+        NKLBitFlipExploiter,
+        NKLGravitationalSearch,
+        NKLHarrisHawks,
+        NKLLSHADE,
+        NKLMarinePredators,
+        NKLMemeticAlgorithm,
+        NKLRandomExplorer,
+        NKLSlimeMould,
+        NKLWhaleOptimization,
+    )
 
     tsp_explorers = [
         SolverFactory(TSPMapElites, {"population_size": 64}),
@@ -302,15 +312,35 @@ def _register_builtin_definitions():
         )
     )
 
+    nkl_explorers = [
+        SolverFactory(NKLRandomExplorer, {"population_size": 64}),
+        SolverFactory(NKLArtificialBeeColony, {"population_size": 96, "random_injection_rate": 0.3, "limit_factor": 1.2}),
+        SolverFactory(NKLGravitationalSearch, {"population_size": 72}),
+        SolverFactory(NKLHarrisHawks, {"population_size": 56, "max_iterations": 500}),
+        SolverFactory(NKLMarinePredators, {"population_size": 60, "fad_probability": 0.25}),
+        SolverFactory(NKLSlimeMould, {"population_size": 64}),
+        SolverFactory(NKLWhaleOptimization, {"population_size": 48, "b": 1.0}),
+    ]
+
+    nkl_exploiters = [
+        SolverFactory(NKLBitFlipExploiter, {"population_size": 24, "moves_per_step": 10}),
+        SolverFactory(NKLArtificialBeeColony, {"population_size": 60, "random_injection_rate": 0.05, "perturbation_scale": 0.25, "limit_factor": 0.85}),
+        SolverFactory(NKLMemeticAlgorithm, {"population_size": 40, "mutation_rate": 0.2, "local_search_steps": 6}),
+        SolverFactory(NKLLSHADE, {"population_size": 64}),
+        SolverFactory(NKLGravitationalSearch, {"population_size": 48}),
+        SolverFactory(NKLHarrisHawks, {"population_size": 40, "max_iterations": 450}),
+        SolverFactory(NKLWhaleOptimization, {"population_size": 36, "b": 0.75}),
+    ]
+
     register_problem(
         ProblemDefinition(
             name="nkl",
             adapter_cls=NKLAdapter,
             default_adapter_kwargs={"n_items": 100, "k_interactions": 5},
             solvers={
-                "exploration": SolverFactory(NKLRandomExplorer, {"population_size": 64}),
-                "exploitation": SolverFactory(NKLBitFlipExploiter, {"population_size": 16}),
+                "exploration": nkl_explorers,
+                "exploitation": nkl_exploiters,
             },
-            metadata={"description": "NK-Landscape baseline with vectorized solvers."},
+            metadata={"description": "NK-Landscape with diverse explorer/exploiter catalog."},
         )
     )
