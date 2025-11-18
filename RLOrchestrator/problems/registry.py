@@ -165,8 +165,18 @@ def _register_builtin_definitions():
         TSPWhaleOptimization,
     )
     from ..maxcut.adapter import MaxCutAdapter
-    from ..maxcut.solvers.explorer import MaxCutRandomExplorer
-    from ..maxcut.solvers.exploiter import MaxCutBitFlipExploiter
+    from ..maxcut.solvers import (
+        MaxCutArtificialBeeColony,
+        MaxCutBitFlipExploiter,
+        MaxCutGravitationalSearch,
+        MaxCutHarrisHawks,
+        MaxCutLSHADE,
+        MaxCutMarinePredators,
+        MaxCutMemeticAlgorithm,
+        MaxCutRandomExplorer,
+        MaxCutSlimeMould,
+        MaxCutWhaleOptimization,
+    )
     from GSA.gsa import GSAConfig
     from LSHADE.lshade import LSHADEConfig
     from ..knapsack.adapter import KnapsackAdapter
@@ -221,16 +231,36 @@ def _register_builtin_definitions():
         )
     )
 
+    maxcut_explorers = [
+        SolverFactory(MaxCutRandomExplorer, {"population_size": 64, "flip_probability": 0.2}),
+        SolverFactory(MaxCutArtificialBeeColony, {"population_size": 96, "random_injection_rate": 0.3, "limit_factor": 1.3}),
+        SolverFactory(MaxCutGravitationalSearch, {"population_size": 72}),
+        SolverFactory(MaxCutHarrisHawks, {"population_size": 56, "max_iterations": 600}),
+        SolverFactory(MaxCutMarinePredators, {"population_size": 64, "fad_probability": 0.25}),
+        SolverFactory(MaxCutSlimeMould, {"population_size": 64}),
+        SolverFactory(MaxCutWhaleOptimization, {"population_size": 48, "b": 1.1}),
+    ]
+
+    maxcut_exploiters = [
+        SolverFactory(MaxCutBitFlipExploiter, {"population_size": 20, "moves_per_step": 12}),
+        SolverFactory(MaxCutArtificialBeeColony, {"population_size": 60, "random_injection_rate": 0.05, "perturbation_scale": 0.25, "limit_factor": 0.9}),
+        SolverFactory(MaxCutMemeticAlgorithm, {"population_size": 40, "mutation_rate": 0.2, "local_search_steps": 5}),
+        SolverFactory(MaxCutLSHADE, {"population_size": 64}),
+        SolverFactory(MaxCutGravitationalSearch, {"population_size": 48}),
+        SolverFactory(MaxCutHarrisHawks, {"population_size": 36, "max_iterations": 500}),
+        SolverFactory(MaxCutWhaleOptimization, {"population_size": 32, "b": 0.7}),
+    ]
+
     register_problem(
         ProblemDefinition(
             name="maxcut",
             adapter_cls=MaxCutAdapter,
             default_adapter_kwargs={"n_nodes": 64, "edge_probability": 0.5},
             solvers={
-                "exploration": SolverFactory(MaxCutRandomExplorer, {"population_size": 64}),
-                "exploitation": SolverFactory(MaxCutBitFlipExploiter, {"population_size": 16}),
+                "exploration": maxcut_explorers,
+                "exploitation": maxcut_exploiters,
             },
-            metadata={"description": "Erdos-Renyi Max-Cut baseline."},
+            metadata={"description": "Erdos-Renyi Max-Cut with diverse solver catalog."},
         )
     )
 
