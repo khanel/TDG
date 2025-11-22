@@ -8,6 +8,7 @@ paper and summarized in docs/candidate_MPA.md.
 from __future__ import annotations
 
 from typing import Optional
+import math
 
 import numpy as np
 
@@ -78,7 +79,7 @@ class MarinePredatorsAlgorithm(SearchAlgorithm):
 
     def _levy(self):
         beta = 1.5
-        sigma = (np.math.gamma(1 + beta) * np.sin(np.pi * beta / 2) / (np.math.gamma((1 + beta) / 2) * beta * 2 ** ((beta - 1) / 2))) ** (1 / beta)
+        sigma = (math.gamma(1 + beta) * math.sin(math.pi * beta / 2) / (math.gamma((1 + beta) / 2) * beta * 2 ** ((beta - 1) / 2))) ** (1 / beta)
         u = self.rng.normal(0, sigma, size=self.dimension)
         v = self.rng.normal(0, 1, size=self.dimension)
         return u / (np.abs(v) ** (1 / beta) + 1e-9)
@@ -99,7 +100,11 @@ class MarinePredatorsAlgorithm(SearchAlgorithm):
         lowers = np.asarray(info.get("lower_bounds")) if "lower_bounds" in info else None
         uppers = np.asarray(info.get("upper_bounds")) if "upper_bounds" in info else None
         if lowers is None or uppers is None:
-            raise ValueError("MPA requires finite bounds for initialization.")
+            # Fallback to unit hypercube when adapters do not provide explicit bounds
+            if self.dimension <= 0:
+                raise ValueError("MPA requires dimension > 0 to derive fallback bounds.")
+            lowers = np.zeros(self.dimension, dtype=float)
+            uppers = np.ones(self.dimension, dtype=float)
         if lowers.size == 1:
             lowers = np.full(self.dimension, lowers.item())
         if uppers.size == 1:

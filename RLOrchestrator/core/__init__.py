@@ -7,12 +7,11 @@ as the canonical interfaces. The Orchestrator here wraps Core search algorithms.
 from .context import BudgetSpec, OrchestratorContext, StageBinding
 from .orchestrator import OrchestratorEnv
 from .observation import ObservationComputer
-from .reward import RewardComputer
 from .stage_controller import StageController
 from .utils import *
 
 __all__ = [
     'BudgetSpec', 'OrchestratorContext', 'StageBinding',
     'StageController', 'OrchestratorEnv',
-    'ObservationComputer', 'RewardComputer',
+    'ObservationComputer',
 ]

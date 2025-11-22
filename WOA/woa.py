@@ -97,7 +97,11 @@ class WhaleOptimizationAlgorithm(SearchAlgorithm):
         lowers = np.asarray(info.get("lower_bounds")) if "lower_bounds" in info else None
         uppers = np.asarray(info.get("upper_bounds")) if "upper_bounds" in info else None
         if lowers is None or uppers is None:
-            raise ValueError("WOA requires explicit bounds.")
+            # Default to unit hypercube if the adapter does not expose bounds
+            if self.dimension <= 0:
+                raise ValueError("WOA requires dimension > 0 to derive fallback bounds.")
+            lowers = np.zeros(self.dimension, dtype=float)
+            uppers = np.ones(self.dimension, dtype=float)
         if lowers.size == 1:
             lowers = np.full(self.dimension, lowers.item())
         if uppers.size == 1:
@@ -108,6 +112,11 @@ class WhaleOptimizationAlgorithm(SearchAlgorithm):
         if self.bounds is None:
             return vector
         lower, upper = self.bounds
+        # Handle any mismatch between vector length and stored bounds by resizing.
+        if lower.shape != vector.shape:
+            lower = np.resize(lower, vector.shape)
+            upper = np.resize(upper, vector.shape)
+            self.bounds = (lower, upper)
         return np.clip(vector, lower, upper)
 
     def _as_vector(self, solution: Solution):

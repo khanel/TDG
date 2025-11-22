@@ -23,7 +23,7 @@ class StageStepResult:
     terminated: bool
     truncated: bool
     switched: bool
-    steps_run: int
+    evals_run: int
     prev_phase: Phase
     phase_after: Phase
     prev_best: Optional[Solution]
@@ -80,13 +80,19 @@ class StageController:
             if not switched:
                 terminated = True
 
-        steps_run = 0
+        evals_run = 0
         if not terminated:
             solver = self.ctx.current_solver()
+            # Correctly account for evaluations: generations * population size
+            pop_size = getattr(solver, 'population_size', 1)
+
             for _ in range(self.ctx.search_steps_per_decision):
                 solver.step()
-                steps_run += 1
-                self.ctx.search_step_count += 1
+                # A single solver step is one generation, consuming pop_size evaluations
+                evals_this_generation = pop_size
+                evals_run += evals_this_generation
+                self.ctx.search_step_count += evals_this_generation
+
                 if self.ctx.max_search_steps is not None and self.ctx.search_step_count >= self.ctx.max_search_steps:
                     terminated = True
                     break
@@ -99,7 +105,7 @@ class StageController:
             terminated=terminated,
             truncated=truncated,
             switched=switched,
-            steps_run=steps_run,
+            evals_run=evals_run,
             prev_phase=prev_phase,
             phase_after=self.ctx.current_phase(),
             prev_best=prev_best,

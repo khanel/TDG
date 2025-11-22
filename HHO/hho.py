@@ -7,6 +7,7 @@ Reference: Heidari et al., 2019 and project summary docs/candidate_HHO.md.
 from __future__ import annotations
 
 from typing import Optional
+import math
 
 import numpy as np
 
@@ -44,10 +45,12 @@ class HarrisHawksOptimization(SearchAlgorithm):
     def step(self):
         if not self.population:
             self.initialize()
-            if not self.population:
-                return
+        if not self.population:
+            return
 
-        positions = np.array([self._as_vector(sol) for sol in self.population], dtype=float)
+        positions_raw = [self._as_vector(sol) for sol in self.population]
+        dim = max((len(p) for p in positions_raw), default=0)
+        positions = np.vstack([self._resize(p, dim) for p in positions_raw])
         fitness = np.array([sol.fitness if sol.fitness is not None else sol.evaluate() for sol in self.population])
         best_idx = int(np.argmin(fitness))
         rabbit = positions[best_idx].copy()
@@ -61,17 +64,17 @@ class HarrisHawksOptimization(SearchAlgorithm):
             q = self.rng.random()
 
             if abs(E) >= 1:
-                positions[i] = self._exploration_step(position, rabbit, positions, q)
+                positions[i] = self._exploration_step(position, rabbit, positions, q, dim)
             else:
                 r = self.rng.random()
                 if r >= 0.5 and abs(E) >= 0.5:
-                    positions[i] = self._soft_besiege(position, rabbit, E, J)
+                    positions[i] = self._soft_besiege(position, rabbit, E, J, dim)
                 elif r >= 0.5 and abs(E) < 0.5:
                     positions[i] = self._hard_besiege(position, rabbit, E)
                 elif r < 0.5 and abs(E) >= 0.5:
-                    positions[i] = self._soft_besiege_with_dive(position, rabbit, E, J)
+                    positions[i] = self._soft_besiege_with_dive(position, rabbit, E, J, dim)
                 else:
-                    positions[i] = self._hard_besiege_with_dive(position, rabbit, E, J)
+                    positions[i] = self._hard_besiege_with_dive(position, rabbit, E, J, dim)
 
         positions = self._clip(positions)
         self.population = [self._solution_from_vector(vec) for vec in positions]
@@ -81,52 +84,75 @@ class HarrisHawksOptimization(SearchAlgorithm):
         self.iteration += 1
 
     # --- Phase helpers -----------------------------------------------------
-    def _exploration_step(self, position, rabbit, population, q):
+    def _exploration_step(self, position, rabbit, population, q, dim: int):
         if q < 0.5:
             rand_idx = self.rng.integers(self.population_size)
-            rand_hawk = population[rand_idx]
-            new_pos = rand_hawk - self.rng.random(self.dimension) * abs(rand_hawk - 2 * self.rng.random(self.dimension) * position)
+            rand_hawk = self._resize(population[rand_idx], dim)
+            new_pos = rand_hawk - self.rng.random(dim) * abs(rand_hawk - 2 * self.rng.random(dim) * position)
         else:
             mean_pos = np.mean(population, axis=0)
-            new_pos = (rabbit - self.rng.random(self.dimension) * abs(rabbit - position)) - self.rng.random(self.dimension) * (
+            mean_pos = self._resize(mean_pos, dim)
+            rabbit = self._resize(rabbit, dim)
+            new_pos = (rabbit - self.rng.random(dim) * abs(rabbit - position)) - self.rng.random(dim) * (
                 mean_pos - position
             )
         return new_pos
 
-    def _soft_besiege(self, position, rabbit, E, J):
+    def _soft_besiege(self, position, rabbit, E, J, dim: int):
+        rabbit = self._resize(rabbit, dim)
         distance = rabbit - position
-        return distance * (self.rng.random(self.dimension) * E) + rabbit
+        return distance * (self.rng.random(dim) * E) + rabbit
 
     def _hard_besiege(self, position, rabbit, E):
         distance = rabbit - position
         return rabbit - E * abs(distance)
 
-    def _soft_besiege_with_dive(self, position, rabbit, E, J):
-        new_position = self._soft_besiege(position, rabbit, E, J)
-        levy = self._levy_flight()
+    def _soft_besiege_with_dive(self, position, rabbit, E, J, dim: int):
+        new_position = self._soft_besiege(position, rabbit, E, J, dim)
+        levy = self._levy_flight(dim)
         y = rabbit - E * abs(J * rabbit - new_position)
-        z = y + levy * self.rng.random(self.dimension)
+        z = y + levy * self.rng.random(dim)
         return y if self._evaluate_vector(y) < self._evaluate_vector(position) else z
 
-    def _hard_besiege_with_dive(self, position, rabbit, E, J):
+    def _hard_besiege_with_dive(self, position, rabbit, E, J, dim: int):
         new_position = self._hard_besiege(position, rabbit, E)
-        levy = self._levy_flight()
+        levy = self._levy_flight(dim)
         y = rabbit - E * abs(J * rabbit - new_position)
-        z = y + levy * self.rng.random(self.dimension)
+        z = y + levy * self.rng.random(dim)
         return y if self._evaluate_vector(y) < self._evaluate_vector(position) else z
 
     # --- Utilities ---------------------------------------------------------
-    def _levy_flight(self):
+    def _levy_flight(self, dim: int | None = None):
         beta = self.levy_beta
-        sigma = (np.math.gamma(1 + beta) * np.sin(np.pi * beta / 2) / (np.math.gamma((1 + beta) / 2) * beta * 2 ** ((beta - 1) / 2))) ** (1 / beta)
-        u = self.rng.normal(0, sigma, size=self.dimension)
-        v = self.rng.normal(0, 1, size=self.dimension)
+        sigma = (math.gamma(1 + beta) * math.sin(math.pi * beta / 2) / (math.gamma((1 + beta) / 2) * beta * 2 ** ((beta - 1) / 2))) ** (1 / beta)
+        d = dim if dim is not None else self.dimension
+        u = self.rng.normal(0, sigma, size=d)
+        v = self.rng.normal(0, 1, size=d)
         step = u / (np.abs(v) ** (1 / beta) + 1e-12)
         return step
 
     def _evaluate_vector(self, vector):
-        sol = Solution(vector.copy(), self.problem)
+        # Prefer problem-specific conversion when available (e.g., permutation mapping for TSP).
+        if hasattr(self, "_vector_to_permutation"):
+            perm = self._vector_to_permutation(vector)
+            sol = Solution(perm, self.problem)
+        elif hasattr(self, "_solution_from_vector") and self._solution_from_vector.__func__ is not HarrisHawksOptimization._solution_from_vector:  # type: ignore
+            sol = self._solution_from_vector(vector)  # type: ignore
+        else:
+            sol = Solution(np.asarray(vector, dtype=float).copy(), self.problem)
         return sol.evaluate()
+
+    @staticmethod
+    def _resize(vec: np.ndarray, dim: int) -> np.ndarray:
+        arr = np.asarray(vec, dtype=float).flatten()
+        if arr.size != dim:
+            # Preserve order but adjust length deterministically
+            base = arr.tolist()
+            out = []
+            while len(out) < dim:
+                out.extend(base)
+            return np.asarray(out[:dim], dtype=float)
+        return arr
 
     def _clip(self, positions):
         if self.bounds is None:
@@ -150,7 +176,10 @@ class HarrisHawksOptimization(SearchAlgorithm):
         lowers = np.asarray(info.get("lower_bounds")) if "lower_bounds" in info else None
         uppers = np.asarray(info.get("upper_bounds")) if "upper_bounds" in info else None
         if lowers is None and uppers is None:
-            return None
+            if self.dimension <= 0:
+                return None
+            lowers = np.zeros(self.dimension, dtype=float)
+            uppers = np.ones(self.dimension, dtype=float)
         if lowers is None:
             lowers = np.full(self.dimension, -np.inf)
         if uppers is None:

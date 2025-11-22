@@ -57,9 +57,10 @@ class TSPPermutationMixin:
         return perm
 
     def _get_vertices(self) -> List[int]:
-        if self._tsp_vertices is None:
-            graph = self.problem.tsp_problem.cities_graph
-            self._tsp_vertices = list(graph.get_vertices())
+        graph = self.problem.tsp_problem.cities_graph
+        vertices = list(graph.get_vertices())
+        if self._tsp_vertices is None or len(self._tsp_vertices) != len(vertices):
+            self._tsp_vertices = vertices
         return self._tsp_vertices
 
 

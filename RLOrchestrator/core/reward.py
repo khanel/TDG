@@ -1,96 +1,123 @@
-"""
-Minimal reward computation for the RL environment.
-"""
-
-import logging
-import math
-from typing import Optional
 import numpy as np
+from dataclasses import dataclass
 
-class RewardComputer:
+
+@dataclass
+class RewardConfig:
+    # Effectiveness: pays for log-space improvement
+    w_gain: float = 40.0
+    gain_ref: float = 0.02                 # reference log-improvement for scaling productivity
+
+    # Exploration value: diversity keeps exploration alive when budget is still high
+    w_diversity: float = 4.0
+
+    # Stagnation tracking
+    breakthrough_threshold: float = 0.0005 # relative improvement to reset stagnation
+    stagnation_scale: float = 10.0         # smooths tanh(stagnation/scale)
+
+    # Opportunity cost: penalize spending budget on low productivity
+    w_opportunity: float = 6.0
+    opportunity_power: float = 2.0         # heavier penalty when budget_remaining is high
+
+    # Efficiency costs
+    w_base_cost: float = 0.01
+    w_stagnation: float = 0.5
+    exploit_pressure_scale: float = 2.0    # stagnation hurts more in exploitation
+
+    # Terminal alignment
+    w_term_quality: float = 30.0
+    w_term_budget: float = 12.0            # reward saving budget, scaled by quality
+
+
+class ElasticRewardComputer:
     """
-    Computes rewards based on a minimal set of signals:
-    - Improvement in solution quality.
-    - Penalties/rewards for taking actions (STAY vs. ADVANCE).
+    Budget-aware, phase-sensitive reward shaping:
+    - Effectiveness first: log-space improvement drives the main signal.
+    - Exploration value: diversity is rewarded when budget is high, encouraging useful exploration.
+    - Efficiency later: stagnation pressure grows with consecutive unproductive steps, stronger in exploitation.
+    - Opportunity cost: low productivity while budget remains high is penalized smoothly (no hard rules).
+    - Termination: quality is rewarded; saving budget is rewarded only when quality is good.
     """
 
-    def __init__(
-        self,
-        problem_meta: dict,
-        *,
-        clip_range: tuple[float, float] = (-1.0, 1.0),
-        time_penalty: float = -0.01,
-        stagnation_threshold: float = 0.8,
-        advance_reward: float = 0.5,
-        advance_penalty: float = -0.5,
-        logger: logging.Logger,
-    ):
-        self.logger = logger
-        self.lower_bound, self.upper_bound = self._extract_bounds(problem_meta)
-        self.fitness_range = max(1e-9, self.upper_bound - self.lower_bound)
-        
-        self._clip_min, self._clip_max = sorted(clip_range)
-        self.time_penalty = float(time_penalty)
-        self.stagnation_threshold = float(stagnation_threshold)
-        self.advance_reward = float(advance_reward)
-        self.advance_penalty = float(advance_penalty)
+    def __init__(self, config: RewardConfig):
+        self.config = config
+        self._prev_fitness: float = 1.0  # Normalized fitness (1.0=worst, 0.0=best)
+        self._stagnation_counter: int = 0
+        self._prev_phase: str = "exploration"
+        self._explore_steps: int = 0
+        self._exploit_steps: int = 0
 
-        self.logger.debug("RewardComputer (minimal) initialized.")
+    def reset(self, initial_norm_best: float):
+        # Clip to ensure stability
+        self._prev_fitness = np.clip(initial_norm_best, 1e-6, 1.0)
+        self._stagnation_counter = 0
+        self._prev_phase = "exploration"
+        self._explore_steps = 0
+        self._exploit_steps = 0
 
     def compute(
         self,
-        *,
-        action: int,
-        improvement: float,
         observation: np.ndarray,
-        **kwargs, # Absorb unused arguments from the environment
+        evals_used_this_step: int,
+        total_budget: int,
+        total_decision_steps: int,
+        terminated: bool,
     ) -> float:
-        """
-        Computes the reward for a given step.
-        """
-        # 1. Improvement Reward
-        normalized_improvement = float(np.clip(improvement / self.fitness_range, -1.0, 1.0))
-        
-        # 2. Action Reward/Penalty
-        action_reward = 0.0
-        if action == 0:  # STAY
-            action_reward = self.time_penalty
-        elif action == 1:  # ADVANCE
-            stagnation_level = observation[3] # Index 3 is 'stagnation'
-            if stagnation_level >= self.stagnation_threshold:
-                action_reward = self.advance_reward # Reward for advancing from stagnation
-            else:
-                action_reward = self.advance_penalty # Penalize for advancing from a productive state
+        budget_remaining = float(np.clip(observation[0], 0.0, 1.0))
+        active_phase = "exploitation" if observation[5] >= 0.5 else "exploration"
 
-        total_reward = normalized_improvement + action_reward
-        final_reward = float(np.clip(total_reward, self._clip_min, self._clip_max))
-        
-        self.logger.debug(
-            f"Reward: total={total_reward:.4f}, final={final_reward:.4f} "
-            f"(improvement={normalized_improvement:.4f}, action_reward={action_reward:.4f})"
+        if active_phase == "exploration":
+            self._explore_steps += 1
+        else:
+            self._exploit_steps += 1
+
+        # 1. Current Normalized Fitness (0.0 best, 1.0 worst)
+        curr_fitness = float(np.clip(observation[1], 1e-6, 1.0))
+
+        # 2. Log-Improvement (Effectiveness)
+        log_improvement = np.log(self._prev_fitness) - np.log(curr_fitness)
+        log_improvement = max(0.0, log_improvement)
+        reward_gain = self.config.w_gain * log_improvement
+
+        # 3. Elastic Pressure (Efficiency)
+        raw_rel_improvement = (self._prev_fitness - curr_fitness) / self._prev_fitness
+        if raw_rel_improvement > self.config.breakthrough_threshold:
+            self._stagnation_counter = 0
+        else:
+            self._stagnation_counter += 1
+
+        phase_pressure_scale = self.config.exploit_pressure_scale if active_phase == "exploitation" else 1.0
+        stagnation_factor = np.tanh(self._stagnation_counter / max(1.0, self.config.stagnation_scale))
+        current_pressure = self.config.w_stagnation * stagnation_factor * phase_pressure_scale
+        total_cost = self.config.w_base_cost + current_pressure
+
+        # 4. Exploration diversity shaping (only in exploration, stronger when budget_remaining is high)
+        diversity = float(np.clip(observation[4], 0.0, 1.0))
+        diversity_bonus = 0.0
+        if active_phase == "exploration":
+            diversity_bonus = self.config.w_diversity * diversity * budget_remaining
+
+        # 5. Opportunity cost: penalize low productivity when budget remains
+        prod = min(log_improvement, self.config.gain_ref) / max(1e-8, self.config.gain_ref)
+        opp_penalty = self.config.w_opportunity * (1.0 - prod) * (budget_remaining ** self.config.opportunity_power)
+
+        # 6. Terminal Alignment
+        reward_term = 0.0
+        if terminated:
+            quality_component = self.config.w_term_quality * (1.0 - curr_fitness)
+            budget_component = self.config.w_term_budget * budget_remaining * (1.0 - curr_fitness)
+            reward_term = quality_component + budget_component
+
+        # 7. Update State
+        self._prev_fitness = curr_fitness
+        self._prev_phase = active_phase
+
+        reward = (
+            reward_gain
+            + diversity_bonus
+            + reward_term
+            - total_cost
+            - opp_penalty
         )
-        return final_reward
 
-    @staticmethod
-    def _extract_bounds(meta: dict) -> tuple[float, float]:
-        """Extracts fitness bounds from problem metadata."""
-        if not isinstance(meta, dict):
-            return 0.0, 1.0
-        
-        keys_to_try = [
-            ("lower_bound", "upper_bound"),
-            ("fitness_lower_bound", "fitness_upper_bound"),
-            ("fitness_min", "fitness_max"),
-        ]
-        
-        for lo_key, hi_key in keys_to_try:
-            if lo_key in meta and hi_key in meta:
-                try:
-                    lb = float(meta[lo_key])
-                    ub = float(meta[hi_key])
-                    if math.isfinite(lb) and math.isfinite(ub) and ub > lb:
-                        return lb, ub
-                except (ValueError, TypeError):
-                    continue
-                    
-        return 0.0, 1.0
+        return float(reward)

@@ -17,7 +17,6 @@ from Core.problem import Solution, ProblemInterface
 from Core.search_algorithm import SearchAlgorithm
 from .context import BudgetSpec, OrchestratorContext, Phase, StageBinding
 from .observation import ObservationComputer, ObservationState
-from .reward import RewardComputer
 from .stage_controller import StageController
 from .utils import IntRangeSpec, setup_logging
 
@@ -63,9 +62,6 @@ class OrchestratorEnv(gym.Env):
         obs_space_size = len(self.obs_comp.feature_names)
         self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(obs_space_size,), dtype=np.float32)
 
-        clip = abs(float(reward_clip))
-        self.reward_comp = RewardComputer(meta, clip_range=(-clip, clip), logger=self.logger)
-
         budget = BudgetSpec(
             max_decision_steps=max_decision_steps,
             search_steps_per_decision=search_steps_per_decision,
@@ -103,23 +99,9 @@ class OrchestratorEnv(gym.Env):
         obs = self._observe()
         self._last_observation = obs.copy()
 
-        prev_best = result.prev_best
-        curr_best = result.curr_best
-        prev_fit = prev_best.fitness if prev_best else float("inf")
-        curr_fit = curr_best.fitness if curr_best else float("inf")
-        improvement = prev_fit - curr_fit if math.isfinite(prev_fit) and math.isfinite(curr_fit) else 0.0
-
-        reward = self.reward_comp.compute(
-            action=action,
-            phase=result.prev_phase,
-            improvement=improvement,
-            terminated=result.terminated,
-            observation=obs,
-            prev_observation=prev_observation,
-            steps_run=result.steps_run,
-            switched=result.switched,
-            phase_after=result.phase_after,
-        )
+        # Default reward is 0.0. Subclasses are expected to override this step
+        # method to implement their own reward calculation.
+        reward = 0.0
 
         self.logger.debug(
             "Step %s: action=%s reward=%.4f terminated=%s truncated=%s phase=%s",
