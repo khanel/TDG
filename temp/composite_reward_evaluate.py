@@ -56,6 +56,7 @@ def evaluate(
     episodes_per_size: int,
     output_dir: Path,
     *,
+    problem_name: str = "tsp",
     grid_size: float = 120.0,
     max_decision_steps: int | tuple[int, int] = 50,
     search_steps_per_decision: int | tuple[int, int] = 1,
@@ -188,16 +189,15 @@ def evaluate(
 
     for n_cities in num_cities_list:
         for ep in range(episodes_per_size):
-            # Use the elastic pressure reward config
-            reward_cfg = RewardConfig(
-                w_gain=50.0,
-                w_base_cost=0.01,
-                w_pressure_growth=0.05,
-                breakthrough_threshold=0.001,
-                w_term=20.0,
-            )
+            # Use the elastic reward defaults
+            reward_cfg = RewardConfig()
+            adapter_kwargs = None
+            if problem_name.lower() == "tsp":
+                adapter_kwargs = {"num_cities": n_cities, "grid_size": grid_size}
+
             env = build_env(
-                adapter_kwargs={"num_cities": n_cities, "grid_size": grid_size},
+                problem_name=problem_name,
+                adapter_kwargs=adapter_kwargs,
                 max_decision_steps=max_decision_steps,
                 search_steps_per_decision=search_steps_per_decision,
                 max_search_steps=max_search_steps,
@@ -297,6 +297,7 @@ actions_exploit: stay={action_counts['exploitation']['stay']},adv={action_counts
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str, default="temp/ppo_elastic_reward.zip")
+    parser.add_argument("--problem-name", type=str, default="tsp", help="Problem to evaluate (default: tsp)")
     parser.add_argument("--num-cities", type=str, default="30,60,90")
     parser.add_argument("--episodes", type=int, default=20, help="Episodes per city count")
     parser.add_argument("--output-dir", type=str, default="temp/composite_eval")
@@ -315,6 +316,7 @@ if __name__ == "__main__":
         num_cities_list=_parse_sizes(args.num_cities),
         episodes_per_size=max(1, args.episodes),
         output_dir=Path(args.output_dir),
+        problem_name=args.problem_name,
         grid_size=args.grid_size,
         max_decision_steps=max_decisions,
         search_steps_per_decision=search_steps,

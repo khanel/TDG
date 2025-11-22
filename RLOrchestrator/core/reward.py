@@ -16,17 +16,21 @@ class RewardConfig:
     stagnation_scale: float = 10.0         # smooths tanh(stagnation/scale)
 
     # Opportunity cost: penalize spending budget on low productivity
-    w_opportunity: float = 6.0
-    opportunity_power: float = 2.0         # heavier penalty when budget_remaining is high
+    w_opportunity: float = 4.0
+    opportunity_power: float = 2.0         # heavier penalty as budget gets consumed
 
     # Efficiency costs
     w_base_cost: float = 0.01
-    w_stagnation: float = 0.5
+    w_stagnation: float = 0.3
     exploit_pressure_scale: float = 2.0    # stagnation hurts more in exploitation
 
     # Terminal alignment
-    w_term_quality: float = 30.0
-    w_term_budget: float = 12.0            # reward saving budget, scaled by quality
+    w_term_quality: float = 25.0           # pays only for improvement vs initial
+    w_term_budget: float = 10.0            # budget bonus scales with improvement
+    term_improve_floor: float = 0.005      # require minimum log-improvement to pay terminal bonus
+    w_bad_term: float = 12.0               # penalty for terminating with poor quality
+    min_decision_fraction: float = 0.25    # discourage terminating before this fraction of decisions
+    w_early_term: float = 60.0             # penalty weight for too-early termination
 
 
 class ElasticRewardComputer:
@@ -46,10 +50,12 @@ class ElasticRewardComputer:
         self._prev_phase: str = "exploration"
         self._explore_steps: int = 0
         self._exploit_steps: int = 0
+        self._initial_fitness: float = 1.0
 
     def reset(self, initial_norm_best: float):
         # Clip to ensure stability
         self._prev_fitness = np.clip(initial_norm_best, 1e-6, 1.0)
+        self._initial_fitness = self._prev_fitness
         self._stagnation_counter = 0
         self._prev_phase = "exploration"
         self._explore_steps = 0
@@ -97,16 +103,25 @@ class ElasticRewardComputer:
         if active_phase == "exploration":
             diversity_bonus = self.config.w_diversity * diversity * budget_remaining
 
-        # 5. Opportunity cost: penalize low productivity when budget remains
+        # 5. Opportunity cost: penalize low productivity as budget is spent
         prod = min(log_improvement, self.config.gain_ref) / max(1e-8, self.config.gain_ref)
-        opp_penalty = self.config.w_opportunity * (1.0 - prod) * (budget_remaining ** self.config.opportunity_power)
+        budget_spent = 1.0 - budget_remaining
+        opp_penalty = self.config.w_opportunity * (1.0 - prod) * (budget_spent ** self.config.opportunity_power)
 
-        # 6. Terminal Alignment
+        # 6. Terminal Alignment (pay only for improvement vs initial)
         reward_term = 0.0
+        bad_term_penalty = 0.0
+        early_term_penalty = 0.0
         if terminated:
-            quality_component = self.config.w_term_quality * (1.0 - curr_fitness)
-            budget_component = self.config.w_term_budget * budget_remaining * (1.0 - curr_fitness)
-            reward_term = quality_component + budget_component
+            term_improvement = max(0.0, np.log(self._initial_fitness) - np.log(curr_fitness))
+            if term_improvement >= self.config.term_improve_floor:
+                quality_component = self.config.w_term_quality * term_improvement
+                budget_component = self.config.w_term_budget * term_improvement * budget_remaining
+                reward_term = quality_component + budget_component
+            bad_term_penalty = self.config.w_bad_term * budget_remaining * curr_fitness
+            decisions_used_frac = budget_spent  # because budget_remaining = 1 - decision_ratio
+            if decisions_used_frac < self.config.min_decision_fraction:
+                early_term_penalty = self.config.w_early_term * (self.config.min_decision_fraction - decisions_used_frac)
 
         # 7. Update State
         self._prev_fitness = curr_fitness
@@ -118,6 +133,8 @@ class ElasticRewardComputer:
             + reward_term
             - total_cost
             - opp_penalty
+            - bad_term_penalty
+            - early_term_penalty
         )
 
         return float(reward)
