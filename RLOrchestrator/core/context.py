@@ -13,7 +13,7 @@ from Core.problem import ProblemInterface, Solution
 from Core.search_algorithm import SearchAlgorithm
 from .utils import IntRangeSpec
 
-Phase = Literal["exploration", "exploitation"]
+Phase = Literal["exploration", "exploitation", "termination"]
 
 
 @dataclass

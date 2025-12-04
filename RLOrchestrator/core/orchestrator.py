@@ -19,6 +19,7 @@ from .context import BudgetSpec, OrchestratorContext, Phase, StageBinding
 from .observation import ObservationComputer, ObservationState
 from .stage_controller import StageController
 from .utils import IntRangeSpec, setup_logging
+from .reward import RewardWrapper
 
 
 class OrchestratorEnv(gym.Env):
@@ -72,11 +73,13 @@ class OrchestratorEnv(gym.Env):
             stages=[
                 StageBinding(name="exploration", solver=exploration_solver),
                 StageBinding(name="exploitation", solver=exploitation_solver),
+                StageBinding(name="termination", solver=None),  # Terminal phase - no solver
             ],
             budget=budget,
         )
         self._context = context
         self._controller = StageController(context)
+        self.reward_computer = RewardWrapper()
 
         if emit_init_summary:
             self._log_init_summary(max_decision_steps, search_steps_per_decision, max_search_steps, reward_clip)
@@ -99,9 +102,8 @@ class OrchestratorEnv(gym.Env):
         obs = self._observe()
         self._last_observation = obs.copy()
 
-        # Default reward is 0.0. Subclasses are expected to override this step
-        # method to implement their own reward calculation.
-        reward = 0.0
+        reward_signal = self.reward_computer.compute(prev_observation, action, {})
+        reward = float(np.clip(reward_signal.value, -self.reward_clip, self.reward_clip))
 
         self.logger.debug(
             "Step %s: action=%s reward=%.4f terminated=%s truncated=%s phase=%s",
