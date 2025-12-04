@@ -24,15 +24,27 @@ class Solution:
         return self.fitness
 
     def copy(self, *, preserve_id: bool = True):
-        """Creates a deep copy of this solution.
+        """Creates a safe copy of this solution without expensive deepcopy.
 
         Args:
             preserve_id: When True (default), the cloned solution keeps the same `id`.
                 Set to False if the copy represents a genuinely new individual.
         """
-        import copy
         new_id = self.id if preserve_id else None
-        new_solution = Solution(copy.deepcopy(self.representation), self.problem, solution_id=new_id)
+        
+        # Handle different representation types safely
+        if hasattr(self.representation, 'copy'):
+            # NumPy arrays - use .copy() for fast, safe duplication
+            new_repr = self.representation.copy()
+        elif isinstance(self.representation, list):
+            # Python lists - use slice copy for safe duplication
+            new_repr = self.representation.copy()
+        else:
+            # Fallback to deepcopy for unknown types
+            import copy
+            new_repr = copy.deepcopy(self.representation)
+        
+        new_solution = Solution(new_repr, self.problem, solution_id=new_id)
         new_solution.fitness = self.fitness
         new_solution._cached_total_value = self._cached_total_value
         new_solution._cached_total_weight = self._cached_total_weight
@@ -100,6 +112,12 @@ class ProblemInterface(abc.ABC):
             A dictionary with problem-specific details.
         """
         pass
+
+    def get_bounds(self) -> Dict[str, Any]:
+        """
+        Optional hook to expose domain bounds.
+        """
+        return {}
 
     def get_bounds(self) -> Dict[str, Any]:
         """
