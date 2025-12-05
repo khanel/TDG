@@ -197,16 +197,32 @@ def _register_builtin_definitions():
     from LSHADE.lshade import LSHADEConfig
     from ..knapsack.adapter import KnapsackAdapter
     from ..knapsack.solvers import (
-        KnapsackArtificialBeeColony,
-        KnapsackBitFlipExploiter,
-        KnapsackGravitationalSearch,
-        KnapsackHarrisHawks,
-        KnapsackLSHADE,
-        KnapsackMarinePredators,
-        KnapsackMemeticAlgorithm,
-        KnapsackRandomExplorer,
-        KnapsackSlimeMould,
-        KnapsackWhaleOptimization,
+        # Explorer variants (11 total)
+        KnapsackMapElitesExplorer,
+        KnapsackGAExplorer,
+        KnapsackPSOExplorer,
+        KnapsackGWOExplorer,
+        KnapsackABCExplorer,
+        KnapsackWOAExplorer,
+        KnapsackHHOExplorer,
+        KnapsackMPAExplorer,
+        KnapsackSMAExplorer,
+        KnapsackGSAExplorer,
+        KnapsackDiversityExplorer,
+        # Exploiter variants (13 total)
+        KnapsackGreedyExploiter,
+        KnapsackGAExploiter,
+        KnapsackPSOExploiter,
+        KnapsackGWOExploiter,
+        KnapsackABCExploiter,
+        KnapsackWOAExploiter,
+        KnapsackHHOExploiter,
+        KnapsackMPAExploiter,
+        KnapsackSMAExploiter,
+        KnapsackGSAExploiter,
+        KnapsackHillClimbingExploiter,
+        KnapsackMemeticExploiter,
+        KnapsackLSHADEExploiter,
     )
     from ..nkl.adapter import NKLAdapter
     from ..nkl.solvers import (
@@ -320,24 +336,35 @@ def _register_builtin_definitions():
         )
     )
 
+    # Knapsack: Full 11x13 explorer/exploiter pool for solver-agnostic training
     knapsack_explorers = [
-        SolverFactory(KnapsackRandomExplorer, {"population_size": 64, "flip_probability": 0.15}),
-        SolverFactory(KnapsackArtificialBeeColony, {"population_size": 96, "random_injection_rate": 0.35, "limit_factor": 1.4}),
-        SolverFactory(KnapsackGravitationalSearch, {"population_size": 72, "config": GSAConfig(g0=250.0, alpha=12.0, k_best_ratio=0.6)}),
-        SolverFactory(KnapsackHarrisHawks, {"population_size": 60, "max_iterations": 600}),
-        SolverFactory(KnapsackMarinePredators, {"population_size": 56, "fad_probability": 0.25}),
-        SolverFactory(KnapsackSlimeMould, {"population_size": 64}),
-        SolverFactory(KnapsackWhaleOptimization, {"population_size": 48, "b": 1.2}),
+        SolverFactory(KnapsackMapElitesExplorer, {"population_size": 64, "n_bins": 10, "mutation_rate": 0.15}),
+        SolverFactory(KnapsackGAExplorer, {"population_size": 64, "mutation_rate": 0.15, "crossover_rate": 0.7, "random_injection_rate": 0.1}),
+        SolverFactory(KnapsackPSOExplorer, {"population_size": 56, "w": 0.9, "c1": 2.5, "c2": 0.5}),
+        SolverFactory(KnapsackGWOExplorer, {"population_size": 48, "a_initial": 3.0, "a_final": 1.0, "random_wolf_prob": 0.3}),
+        SolverFactory(KnapsackABCExplorer, {"population_size": 72, "limit_factor": 0.5, "perturbation_scale": 0.8}),
+        SolverFactory(KnapsackWOAExplorer, {"population_size": 48, "a_initial": 3.0, "encircle_prob": 0.3}),
+        SolverFactory(KnapsackHHOExplorer, {"population_size": 56, "exploration_bias": 0.7, "random_hawk_prob": 0.5}),
+        SolverFactory(KnapsackMPAExplorer, {"population_size": 60, "fad_probability": 0.4, "brownian_scale": 1.5}),
+        SolverFactory(KnapsackSMAExplorer, {"population_size": 64, "random_position_prob": 0.4, "mutation_rate": 0.15}),
+        SolverFactory(KnapsackGSAExplorer, {"population_size": 56, "G0": 200.0, "alpha": 10.0}),
+        SolverFactory(KnapsackDiversityExplorer, {"population_size": 48, "mutation_rate": 0.2, "random_injection_rate": 0.25}),
     ]
 
     knapsack_exploiters = [
-        SolverFactory(KnapsackBitFlipExploiter, {"population_size": 24, "moves_per_step": 10}),
-        SolverFactory(KnapsackArtificialBeeColony, {"population_size": 48, "random_injection_rate": 0.05, "perturbation_scale": 0.2, "limit_factor": 0.8}),
-        SolverFactory(KnapsackMemeticAlgorithm, {"population_size": 40, "mutation_rate": 0.15, "local_search_steps": 6}),
-        SolverFactory(KnapsackLSHADE, {"population_size": 64, "config": LSHADEConfig(max_iterations=600, min_population=8, history_size=6, p_best_rate=0.2)}),
-        SolverFactory(KnapsackGravitationalSearch, {"population_size": 48, "config": GSAConfig(g0=120.0, alpha=25.0, k_best_ratio=0.4)}),
-        SolverFactory(KnapsackHarrisHawks, {"population_size": 40, "max_iterations": 500}),
-        SolverFactory(KnapsackWhaleOptimization, {"population_size": 36, "b": 0.8}),
+        SolverFactory(KnapsackGreedyExploiter, {"population_size": 32, "n_flips": 10}),
+        SolverFactory(KnapsackGAExploiter, {"population_size": 56, "mutation_rate": 0.02, "elitism_rate": 0.1}),
+        SolverFactory(KnapsackPSOExploiter, {"population_size": 48, "w": 0.4, "c1": 1.0, "c2": 2.5}),
+        SolverFactory(KnapsackGWOExploiter, {"population_size": 40, "a_initial": 2.0, "a_final": 0.0}),
+        SolverFactory(KnapsackABCExploiter, {"population_size": 60, "limit_factor": 3.0, "perturbation_scale": 0.2}),
+        SolverFactory(KnapsackWOAExploiter, {"population_size": 36, "a_initial": 2.0, "encircle_prob": 0.7, "spiral_b": 0.5}),
+        SolverFactory(KnapsackHHOExploiter, {"population_size": 40, "exploitation_bias": 0.8}),
+        SolverFactory(KnapsackMPAExploiter, {"population_size": 48, "fad_probability": 0.05, "levy_scale": 0.5}),
+        SolverFactory(KnapsackSMAExploiter, {"population_size": 56, "random_position_prob": 0.03}),
+        SolverFactory(KnapsackGSAExploiter, {"population_size": 48, "G0": 100.0, "alpha": 30.0}),
+        SolverFactory(KnapsackHillClimbingExploiter, {"population_size": 24, "n_neighbors": 10}),
+        SolverFactory(KnapsackMemeticExploiter, {"population_size": 40, "local_search_prob": 0.8, "local_search_steps": 10}),
+        SolverFactory(KnapsackLSHADEExploiter, {"population_size": 64, "p_best_rate": 0.05}),
     ]
 
     register_problem(
@@ -354,7 +381,12 @@ def _register_builtin_definitions():
                 "exploration": knapsack_explorers,
                 "exploitation": knapsack_exploiters,
             },
-            metadata={"description": "Binary knapsack with rich explorer/exploiter catalog."},
+            metadata={
+                "description": "Binary knapsack with full 11x13 properly-tuned explorer/exploiter pool.",
+                "explorer_count": 11,
+                "exploiter_count": 13,
+                "total_pairings": 11 * 13,  # 143 unique solver combinations
+            },
         )
     )
 
