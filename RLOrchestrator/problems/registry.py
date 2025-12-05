@@ -194,16 +194,32 @@ def _register_builtin_definitions():
     )
     from ..nkl.adapter import NKLAdapter
     from ..nkl.solvers import (
-        NKLArtificialBeeColony,
-        NKLBinaryPSOExploiter,
-        NKLGravitationalSearch,
-        NKLHarrisHawks,
-        NKLLSHADE,
+        # Explorer variants (properly tuned for diversity/global search)
         NKLMapElitesExplorer,
-        NKLMarinePredators,
-        NKLMemeticAlgorithm,
-        NKLSlimeMould,
-        NKLWhaleOptimization,
+        NKLGWOExplorer,
+        NKLPSOExplorer,
+        NKLGAExplorer,
+        NKLABCExplorer,
+        NKLWOAExplorer,
+        NKLHHOExplorer,
+        NKLMPAExplorer,
+        NKLSMAExplorer,
+        NKLGSAExplorer,
+        NKLDiversityExplorer,
+        # Exploiter variants (properly tuned for convergence/local refinement)
+        NKLBinaryPSOExploiter,
+        NKLGWOExploiter,
+        NKLPSOExploiter,
+        NKLGAExploiter,
+        NKLLSHADEExploiter,
+        NKLWOAExploiter,
+        NKLHHOExploiter,
+        NKLMPAExploiter,
+        NKLSMAExploiter,
+        NKLGSAExploiter,
+        NKLHillClimbingExploiter,
+        NKLMemeticExploiter,
+        NKLABCExploiter,
     )
 
     tsp_explorers = [
@@ -312,24 +328,40 @@ def _register_builtin_definitions():
         )
     )
 
+    # NKL: Full 11x13 explorer/exploiter pool for solver-agnostic training
+    # Each solver is properly tuned for its role (exploration vs exploitation)
     nkl_explorers = [
-        SolverFactory(NKLMapElitesExplorer, {"population_size": 64}),
-        SolverFactory(NKLArtificialBeeColony, {"population_size": 96, "random_injection_rate": 0.3, "limit_factor": 1.2}),
-        SolverFactory(NKLGravitationalSearch, {"population_size": 72}),
-        SolverFactory(NKLHarrisHawks, {"population_size": 56, "max_iterations": 500}),
-        SolverFactory(NKLMarinePredators, {"population_size": 60, "fad_probability": 0.25}),
-        SolverFactory(NKLSlimeMould, {"population_size": 64}),
-        SolverFactory(NKLWhaleOptimization, {"population_size": 48, "b": 1.0}),
+        # Quality-Diversity (QD) - maintains diverse archive
+        SolverFactory(NKLMapElitesExplorer, {"population_size": 64, "n_bins": 10, "mutation_rate": 0.1}),
+        # Population-based metaheuristics tuned for exploration
+        SolverFactory(NKLGWOExplorer, {"population_size": 48, "a_initial": 3.0, "a_final": 1.0, "mutation_rate": 0.15}),
+        SolverFactory(NKLPSOExplorer, {"population_size": 56, "omega": 0.9, "c1": 2.5, "c2": 0.5}),
+        SolverFactory(NKLGAExplorer, {"population_size": 64, "mutation_rate": 0.15, "random_immigrant_rate": 0.1}),
+        SolverFactory(NKLABCExplorer, {"population_size": 72, "limit_factor": 0.5, "perturbation_scale": 0.8}),
+        SolverFactory(NKLWOAExplorer, {"population_size": 48, "a_initial": 3.0, "encircle_prob": 0.3}),
+        SolverFactory(NKLHHOExplorer, {"population_size": 56, "exploration_bias": 0.7, "random_hawk_prob": 0.5}),
+        SolverFactory(NKLMPAExplorer, {"population_size": 60, "fad_probability": 0.4, "brownian_scale": 1.5}),
+        SolverFactory(NKLSMAExplorer, {"population_size": 64, "random_position_prob": 0.4, "mutation_rate": 0.15}),
+        SolverFactory(NKLGSAExplorer, {"population_size": 56, "G0": 200.0, "alpha": 10.0, "mutation_rate": 0.1}),
+        SolverFactory(NKLDiversityExplorer, {"population_size": 48, "mutation_rate": 0.2, "random_injection_rate": 0.25}),
     ]
 
     nkl_exploiters = [
-        SolverFactory(NKLBinaryPSOExploiter, {"population_size": 24, "moves_per_step": 10}),
-        SolverFactory(NKLArtificialBeeColony, {"population_size": 60, "random_injection_rate": 0.05, "perturbation_scale": 0.25, "limit_factor": 0.85}),
-        SolverFactory(NKLMemeticAlgorithm, {"population_size": 40, "mutation_rate": 0.2, "local_search_steps": 6}),
-        SolverFactory(NKLLSHADE, {"population_size": 64}),
-        SolverFactory(NKLGravitationalSearch, {"population_size": 48}),
-        SolverFactory(NKLHarrisHawks, {"population_size": 40, "max_iterations": 450}),
-        SolverFactory(NKLWhaleOptimization, {"population_size": 36, "b": 0.75}),
+        # Binary-specific local search
+        SolverFactory(NKLBinaryPSOExploiter, {"population_size": 32}),
+        SolverFactory(NKLHillClimbingExploiter, {"population_size": 24, "n_neighbors": 10}),
+        SolverFactory(NKLMemeticExploiter, {"population_size": 40, "local_search_prob": 0.8, "local_search_steps": 10}),
+        # Population-based metaheuristics tuned for exploitation
+        SolverFactory(NKLGWOExploiter, {"population_size": 40, "a_initial": 2.0, "a_final": 0.0, "mutation_rate": 0.02}),
+        SolverFactory(NKLPSOExploiter, {"population_size": 48, "omega": 0.4, "c1": 1.0, "c2": 2.5}),
+        SolverFactory(NKLGAExploiter, {"population_size": 56, "mutation_rate": 0.02, "elitism_rate": 0.1}),
+        SolverFactory(NKLLSHADEExploiter, {"population_size": 64, "p_best_rate": 0.05}),
+        SolverFactory(NKLWOAExploiter, {"population_size": 36, "a_initial": 2.0, "encircle_prob": 0.7, "spiral_b": 0.5}),
+        SolverFactory(NKLHHOExploiter, {"population_size": 40, "exploitation_bias": 0.8, "levy_steps": 3}),
+        SolverFactory(NKLMPAExploiter, {"population_size": 48, "fad_probability": 0.05, "levy_scale": 0.5}),
+        SolverFactory(NKLSMAExploiter, {"population_size": 56, "random_position_prob": 0.03, "mutation_rate": 0.02}),
+        SolverFactory(NKLGSAExploiter, {"population_size": 48, "G0": 100.0, "alpha": 30.0, "mutation_rate": 0.02}),
+        SolverFactory(NKLABCExploiter, {"population_size": 60, "limit_factor": 3.0, "perturbation_scale": 0.2}),
     ]
 
     register_problem(
@@ -341,6 +373,11 @@ def _register_builtin_definitions():
                 "exploration": nkl_explorers,
                 "exploitation": nkl_exploiters,
             },
-            metadata={"description": "NK-Landscape with diverse explorer/exploiter catalog."},
+            metadata={
+                "description": "NK-Landscape with full 11x13 properly-tuned explorer/exploiter pool.",
+                "explorer_count": 11,
+                "exploiter_count": 13,
+                "total_pairings": 11 * 13,  # 143 unique solver combinations
+            },
         )
     )

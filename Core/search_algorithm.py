@@ -115,6 +115,17 @@ class SearchAlgorithm(abc.ABC):
             exports.append(clone)
         return exports
 
+    def mark_best_dirty(self) -> None:
+        """
+        Mark the best solution as needing recalculation.
+        
+        This is a no-op in the base class but can be overridden
+        in subclasses that maintain lazy best-solution caches.
+        Called after population changes to signal that best_solution
+        may be stale.
+        """
+        pass
+
     def ensure_population_evaluated(self) -> None:
         """Lazily evaluate any unevaluated individuals in-place."""
         for sol in self.population:
