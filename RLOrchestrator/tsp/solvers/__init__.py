@@ -2,8 +2,8 @@
 TSP solver implementations for exploration and exploitation phases.
 """
 
-from .map_elites import TSPMapElites
-from .pso import TSPParticleSwarm
+from .explorer import TSPMapElitesExplorer
+from .exploiter import TSPPSOExploiter
 from .hybrid import (
     TSPArtificialBeeColony,
     TSPGravitationalSearch,
@@ -17,8 +17,8 @@ from .hybrid import (
 
 
 __all__ = [
-    "TSPMapElites",
-    "TSPParticleSwarm",
+    "TSPMapElitesExplorer",
+    "TSPPSOExploiter",
     "TSPArtificialBeeColony",
     "TSPGravitationalSearch",
     "TSPHarrisHawks",

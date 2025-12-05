@@ -157,10 +157,10 @@ def _register_builtin_definitions():
         TSPGravitationalSearch,
         TSPHarrisHawks,
         TSPLSHADE,
-        TSPMapElites,
+        TSPMapElitesExplorer,
         TSPMarinePredators,
         TSPMemeticAlgorithm,
-        TSPParticleSwarm,
+        TSPPSOExploiter,
         TSPSlimeMould,
         TSPWhaleOptimization,
     )
@@ -195,19 +195,19 @@ def _register_builtin_definitions():
     from ..nkl.adapter import NKLAdapter
     from ..nkl.solvers import (
         NKLArtificialBeeColony,
-        NKLBitFlipExploiter,
+        NKLBinaryPSOExploiter,
         NKLGravitationalSearch,
         NKLHarrisHawks,
         NKLLSHADE,
+        NKLMapElitesExplorer,
         NKLMarinePredators,
         NKLMemeticAlgorithm,
-        NKLRandomExplorer,
         NKLSlimeMould,
         NKLWhaleOptimization,
     )
 
     tsp_explorers = [
-        SolverFactory(TSPMapElites, {"population_size": 64}),
+        SolverFactory(TSPMapElitesExplorer, {"population_size": 64}),
         SolverFactory(TSPArtificialBeeColony, {"population_size": 96, "random_injection_rate": 0.25, "limit_factor": 1.2}),
         SolverFactory(TSPGravitationalSearch, {"population_size": 64}),
         SolverFactory(TSPHarrisHawks, {"population_size": 48, "max_iterations": 800}),
@@ -217,7 +217,7 @@ def _register_builtin_definitions():
     ]
 
     tsp_exploiters = [
-        SolverFactory(TSPParticleSwarm, {"population_size": 48}),
+        SolverFactory(TSPPSOExploiter, {"population_size": 48}),
         SolverFactory(TSPMemeticAlgorithm, {"population_size": 40, "mutation_rate": 0.25, "local_search_steps": 4}),
         SolverFactory(TSPLSHADE, {"population_size": 60}),
         SolverFactory(TSPArtificialBeeColony, {"population_size": 64, "random_injection_rate": 0.05, "perturbation_scale": 0.25, "limit_factor": 0.8}),
@@ -313,7 +313,7 @@ def _register_builtin_definitions():
     )
 
     nkl_explorers = [
-        SolverFactory(NKLRandomExplorer, {"population_size": 64}),
+        SolverFactory(NKLMapElitesExplorer, {"population_size": 64}),
         SolverFactory(NKLArtificialBeeColony, {"population_size": 96, "random_injection_rate": 0.3, "limit_factor": 1.2}),
         SolverFactory(NKLGravitationalSearch, {"population_size": 72}),
         SolverFactory(NKLHarrisHawks, {"population_size": 56, "max_iterations": 500}),
@@ -323,7 +323,7 @@ def _register_builtin_definitions():
     ]
 
     nkl_exploiters = [
-        SolverFactory(NKLBitFlipExploiter, {"population_size": 24, "moves_per_step": 10}),
+        SolverFactory(NKLBinaryPSOExploiter, {"population_size": 24, "moves_per_step": 10}),
         SolverFactory(NKLArtificialBeeColony, {"population_size": 60, "random_injection_rate": 0.05, "perturbation_scale": 0.25, "limit_factor": 0.85}),
         SolverFactory(NKLMemeticAlgorithm, {"population_size": 40, "mutation_rate": 0.2, "local_search_steps": 6}),
         SolverFactory(NKLLSHADE, {"population_size": 64}),

@@ -1,10 +1,10 @@
 """
-Fully vectorized exploration solver for NKL.
+MAP-Elites Quality-Diversity algorithm for EXPLORATION.
 """
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Dict, Tuple, List
 
 import numpy as np
 
@@ -12,88 +12,136 @@ from Core.problem import ProblemInterface, Solution
 from Core.search_algorithm import SearchAlgorithm
 
 
-class NKLRandomExplorer(SearchAlgorithm):
-    """Maintains a diverse population via vectorized random bit flips."""
-    phase = 'exploration'
+class Elite:
+    """Represents an elite solution in the archive."""
+    x: np.ndarray
+    fitness: float
+    bd: np.ndarray  # Behavior descriptor
 
-    def __init__(
-        self,
-        problem: ProblemInterface,
-        population_size: int = 64,
-        *,
-        flip_probability: float = 0.15,
-        elite_fraction: float = 0.25,
-        seed: Optional[int] = None,
-    ):
-        super().__init__(problem, population_size)
-        self.flip_probability = float(np.clip(flip_probability, 0.01, 0.9))
-        self.elite_fraction = float(np.clip(elite_fraction, 0.05, 0.8))
-        self.rng = np.random.default_rng(seed)
+
+class NKLMapElitesExplorer(SearchAlgorithm):
+    """
+    MAP-Elites Quality-Diversity algorithm for EXPLORATION.
+    
+    Maintains an archive of diverse, high-quality solutions across
+    a behavioral space. Perfect for exploration as it:
+    - Explicitly maintains diversity through behavioral descriptors
+    - Keeps the best solution in each behavioral niche
+    - Natural exploration pressure to fill empty niches
+    """
+    phase = "exploration"
+
+    def __init__(self, problem: ProblemInterface, population_size: int, 
+                 n_bins: int = 10, mutation_rate: float = 0.1,
+                 batch_size: int = 32, **kwargs):
+        super().__init__(problem, population_size, **kwargs)
+        self.n_bins = n_bins
+        self.mutation_rate = mutation_rate
+        self.batch_size = batch_size
+        self._dimension = None
         
-        # Internally, population is a numpy array for performance
-        self._population_matrix: Optional[np.ndarray] = None
-        self._fitness_values: Optional[np.ndarray] = None
+        # Archive: maps (bin_x, bin_y) -> Elite
+        self.archive: Dict[Tuple[int, int], Elite] = {}
+        
+    def _compute_behavior_descriptor(self, x: np.ndarray) -> np.ndarray:
+        """
+        Compute 2D behavior descriptor for binary solution.
+        Uses: (proportion of 1s in first half, proportion of 1s in second half)
+        """
+        mid = len(x) // 2
+        bd1 = np.mean(x[:mid])  # Density in first half
+        bd2 = np.mean(x[mid:])  # Density in second half
+        return np.array([bd1, bd2])
+    
+    def _bd_to_key(self, bd: np.ndarray) -> Tuple[int, int]:
+        """Convert behavior descriptor to archive key."""
+        bin_x = int(np.clip(bd[0] * self.n_bins, 0, self.n_bins - 1))
+        bin_y = int(np.clip(bd[1] * self.n_bins, 0, self.n_bins - 1))
+        return (bin_x, bin_y)
+    
+    def _add_to_archive(self, x: np.ndarray, fitness: float) -> bool:
+        """Add solution to archive if it improves the cell. Returns True if added."""
+        bd = self._compute_behavior_descriptor(x)
+        key = self._bd_to_key(bd)
+        
+        current = self.archive.get(key)
+        if current is None or fitness < current.fitness:  # Minimization
+            self.archive[key] = Elite(x.copy(), fitness, bd)
+            return True
+        return False
 
     def initialize(self):
-        n = self.problem.get_problem_info()["dimension"]
-        self._population_matrix = self.rng.integers(0, 2, size=(self.population_size, n), dtype=np.int8)
-        self._fitness_values = self.problem.nkl_problem.evaluate_batch(self._population_matrix)
-        self._update_best_solution_from_matrix()
+        """Initialize population and archive."""
+        super().initialize()
+        
+        if not self.population:
+            return
+            
+        self._dimension = len(self.population[0].representation)
+        
+        # Add initial population to archive
+        for sol in self.population:
+            self._add_to_archive(np.asarray(sol.representation), sol.fitness)
+        
+        self._update_best_solution()
 
     def step(self):
-        if self._population_matrix is None or self._fitness_values is None:
-            self.initialize()
-
-        # --- 1. Select Elites ---
-        elite_count = max(1, int(self.elite_fraction * self.population_size))
-        elite_indices = np.argsort(self._fitness_values)[:elite_count]
-        elites = self._population_matrix[elite_indices]
-        elite_fitnesses = self._fitness_values[elite_indices]
-
-        # --- 2. Generate Offspring (Vectorized) ---
-        # Create mutations for the entire population
-        mutation_mask = self.rng.random(self._population_matrix.shape) < self.flip_probability
+        """One step of MAP-Elites: select parents, mutate, add to archive."""
+        self.ensure_population_evaluated()
         
-        # Ensure at least one flip per offspring to prevent stagnation
-        no_flips_mask = ~np.any(mutation_mask, axis=1)
-        if np.any(no_flips_mask):
-            random_indices = self.rng.integers(0, self._population_matrix.shape[1], size=np.sum(no_flips_mask))
-            mutation_mask[no_flips_mask, random_indices] = True
-
-        # Apply mutations to create children
-        offspring_matrix = np.where(mutation_mask, 1 - self._population_matrix, self._population_matrix)
-
-        # --- 3. Evaluate Offspring (Batch) ---
-        offspring_fitnesses = self.problem.nkl_problem.evaluate_batch(offspring_matrix)
-
-        # --- 4. Combine and Select New Population ---
-        combined_population = np.vstack([elites, offspring_matrix])
-        combined_fitnesses = np.concatenate([elite_fitnesses, offspring_fitnesses])
-
-        # Select the best for the next generation
-        selection_indices = np.argsort(combined_fitnesses)[:self.population_size]
-        self._population_matrix = combined_population[selection_indices]
-        self._fitness_values = combined_fitnesses[selection_indices]
-
-        # --- 5. Update Best Solution ---
-        self._update_best_solution_from_matrix()
+        if self._dimension is None and self.population:
+            self._dimension = len(self.population[0].representation)
+        
+        if not self.archive:
+            self.initialize()
+            return
+        
+        # Select parents from archive uniformly
+        archive_elites = list(self.archive.values())
+        
+        new_solutions = []
+        for _ in range(self.batch_size):
+            # Select random parent from archive
+            parent = archive_elites[np.random.randint(len(archive_elites))]
+            parent_x = parent.x.copy()
+            
+            # Mutation: flip bits with probability mutation_rate
+            mutation_mask = np.random.rand(self._dimension) < self.mutation_rate
+            child_x = parent_x.copy()
+            child_x[mutation_mask] = 1 - child_x[mutation_mask]
+            
+            # Evaluate and add to archive
+            child_sol = Solution(child_x.astype(int), self.problem)
+            child_sol.evaluate()
+            
+            self._add_to_archive(child_x, child_sol.fitness)
+            new_solutions.append(child_sol)
+        
+        # Update population from archive (sample diverse solutions)
+        archive_solutions = []
+        for elite in self.archive.values():
+            sol = Solution(elite.x.astype(int), self.problem)
+            sol.fitness = elite.fitness
+            archive_solutions.append(sol)
+        
+        # Keep population_size solutions, preferring diversity
+        if len(archive_solutions) >= self.population_size:
+            self.population = archive_solutions[:self.population_size]
+        else:
+            self.population = archive_solutions + new_solutions[:self.population_size - len(archive_solutions)]
+        
+        self.mark_best_dirty()
+        self._update_best_solution()
         self.iteration += 1
-
-    def _update_best_solution_from_matrix(self):
-        best_idx = np.argmin(self._fitness_values)
-        best_fitness = self._fitness_values[best_idx]
-        if self.best_solution is None or best_fitness < self.best_solution.fitness:
-            best_representation = self._population_matrix[best_idx].tolist()
-            self.best_solution = Solution(best_representation, self.problem)
-            self.best_solution.fitness = best_fitness
-
-    def get_population(self) -> list[Solution]:
-        # This is a compatibility method for the observation computer.
-        # It's inefficient and should be used sparingly.
-        solutions = []
-        if self._population_matrix is not None and self._fitness_values is not None:
-            for rep, fit in zip(self._population_matrix, self._fitness_values):
-                sol = Solution(rep.tolist(), self.problem)
-                sol.fitness = fit
-                solutions.append(sol)
-        return solutions
+    
+    def get_archive_coverage(self) -> float:
+        """Return fraction of archive cells filled."""
+        total_cells = self.n_bins * self.n_bins
+        return len(self.archive) / total_cells
+    
+    def ingest_population(self, seeds: List[Solution]):
+        """Ingest population and add to archive."""
+        super().ingest_population(seeds)
+        for sol in self.population:
+            if sol.fitness is not None:
+                self._add_to_archive(np.asarray(sol.representation), sol.fitness)

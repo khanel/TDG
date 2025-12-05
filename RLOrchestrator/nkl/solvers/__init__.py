@@ -1,7 +1,7 @@
 """NK-Landscape solver implementations."""
 
-from .explorer import NKLRandomExplorer
-from .exploiter import NKLBitFlipExploiter
+from .explorer import NKLMapElitesExplorer
+from .exploiter import NKLBinaryPSOExploiter
 from .hybrid import (
     NKLArtificialBeeColony,
     NKLGravitationalSearch,
@@ -14,8 +14,8 @@ from .hybrid import (
 )
 
 __all__ = [
-    "NKLRandomExplorer",
-    "NKLBitFlipExploiter",
+    "NKLMapElitesExplorer",
+    "NKLBinaryPSOExploiter",
     "NKLArtificialBeeColony",
     "NKLGravitationalSearch",
     "NKLHarrisHawks",
