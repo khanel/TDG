@@ -67,6 +67,52 @@ class NKLAdapter(ProblemInterface):
         solution.fitness = fitness
         return fitness
 
+    def batch_evaluate_solutions(self, solutions: List[Solution]) -> np.ndarray:
+        """
+        Highly optimized vectorized batch evaluation for multiple Solution objects.
+        
+        Args:
+            solutions: List of Solution objects
+            
+        Returns:
+            Array of fitness values
+        """
+        if not solutions:
+            return np.array([])
+        
+        n = int(self.nkl_problem.n)
+        batch_size = len(solutions)
+        
+        # Pre-allocate array for better performance
+        representations = np.zeros((batch_size, n), dtype=int)
+        
+        for i, sol in enumerate(solutions):
+            rep = np.asarray(sol.representation)
+            if rep.ndim != 1:
+                rep = rep.reshape(-1)
+            # Ensure binary values {0,1}
+            rep = np.where(rep > 0, 1, 0).astype(int)
+            
+            m = int(rep.shape[0])
+            if m != n:
+                # Handle size mismatch
+                if m > n:
+                    representations[i] = rep[:n]
+                else:
+                    representations[i, :m] = rep
+                    # Pad with zeros (deterministic for batch consistency)
+            else:
+                representations[i] = rep
+        
+        # Vectorized batch evaluation using core's evaluate_batch
+        fitnesses = self.nkl_problem.evaluate_batch(representations)
+        
+        # Update solution fitnesses in-place
+        for sol, fitness in zip(solutions, fitnesses):
+            sol.fitness = float(fitness)
+        
+        return fitnesses
+
     def get_initial_solution(self) -> Solution:
         n = self.nkl_problem.n
         mask = self._rng.integers(0, 2, size=n, dtype=int)
@@ -75,7 +121,22 @@ class NKLAdapter(ProblemInterface):
         return sol
 
     def get_initial_population(self, size: int) -> List[Solution]:
-        return [self.get_initial_solution() for _ in range(max(1, int(size)))]
+        """
+        Generates an initial population of solutions using vectorized evaluation.
+        """
+        n = self.nkl_problem.n
+        population_size = max(1, int(size))
+        
+        # Vectorized population generation
+        population_representations = self._rng.integers(0, 2, size=(population_size, n), dtype=int)
+        
+        # Create solution objects
+        population = [Solution(rep.tolist(), self) for rep in population_representations]
+        
+        # Use vectorized batch evaluation for efficiency
+        self.batch_evaluate_solutions(population)
+        
+        return population
 
     def get_problem_info(self) -> Dict[str, Any]:
         return {
