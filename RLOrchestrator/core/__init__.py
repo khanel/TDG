@@ -9,6 +9,7 @@ from .orchestrator import OrchestratorEnv
 from .observation import ObservationComputer
 from .stage_controller import StageController
 from .deployment import DeployableOrchestrator, ObservationConfig, PRESETS, create_deployable_agent
+from .reward import RewardWrapper, EFRConfig
 from .utils import *
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     'StageController', 'OrchestratorEnv',
     'ObservationComputer',
     'DeployableOrchestrator', 'ObservationConfig', 'PRESETS', 'create_deployable_agent',
+    'RewardWrapper', 'EFRConfig',
 ]
