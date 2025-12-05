@@ -135,12 +135,21 @@ class OrchestratorEnv(gym.Env):
         phase = self.get_phase()
         max_decisions = max(1, self._context.max_decision_steps or 1)
         step_ratio = self._context.decision_count / max_decisions if max_decisions > 0 else 0.0
+        
+        # For termination phase (solver=None), use the last active solver's data
+        if solver is None:
+            # Find the last stage with a solver to get population/best for diversity calc
+            for stage in reversed(self._context.stages):
+                if stage.solver is not None:
+                    solver = stage.solver
+                    break
+        
         state = ObservationState(
             solver=solver,
             phase=phase,
             step_ratio=step_ratio,
-            best_solution=solver.get_best(),
-            population=solver.get_population(),
+            best_solution=self._context.best_solution,
+            population=solver.get_population() if solver else None,
         )
         observation = self.obs_comp.compute(state)
         self.logger.debug(f"Observation at decision {self._context.decision_count}: {observation}")

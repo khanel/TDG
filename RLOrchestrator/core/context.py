@@ -18,9 +18,12 @@ Phase = Literal["exploration", "exploitation", "termination"]
 
 @dataclass
 class StageBinding:
-    """Declarative pairing between a stage name and its solver instance."""
+    """Declarative pairing between a stage name and its solver instance.
+    
+    For the termination phase, solver can be None (episode ends, no more search).
+    """
     name: Phase
-    solver: SearchAlgorithm
+    solver: Optional[SearchAlgorithm]  # None for termination phase
 
 
 @dataclass
@@ -52,14 +55,16 @@ class OrchestratorContext:
     def __post_init__(self) -> None:
         if not self.stages:
             raise ValueError("At least one stage must be supplied.")
+        valid_phases = ("exploration", "exploitation", "termination")
         for binding in self.stages:
-            if binding.name not in ("exploration", "exploitation"):
-                raise ValueError(f"Unsupported stage name: {binding.name}")
+            if binding.name not in valid_phases:
+                raise ValueError(f"Unsupported stage name: {binding.name}. Must be one of {valid_phases}")
 
     def current_stage(self) -> StageBinding:
         return self.stages[self.phase_index]
 
-    def current_solver(self) -> SearchAlgorithm:
+    def current_solver(self) -> Optional[SearchAlgorithm]:
+        """Returns current solver, or None if in termination phase."""
         return self.current_stage().solver
 
     def current_phase(self) -> Phase:

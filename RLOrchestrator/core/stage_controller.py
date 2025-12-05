@@ -61,6 +61,9 @@ class StageController:
                 instance_regenerated = False
 
         for binding in self.ctx.stages:
+            # Skip termination phase (solver is None)
+            if binding.solver is None:
+                continue
             # Always initialize after regenerating the instance to keep solvers in sync
             if hasattr(binding.solver, "initialize"):
                 binding.solver.initialize()
@@ -75,14 +78,18 @@ class StageController:
         terminated = False
         switched = False
 
-        if action == 1:  # ADVANCE
+        if action == 1:  # ADVANCE to next phase
             switched = self._advance_stage()
-            if not switched:
-                terminated = True
 
         evals_run = 0
-        if not terminated:
-            solver = self.ctx.current_solver()
+        
+        # Check if we've entered termination phase (solver is None)
+        current_stage = self.ctx.stages[self.ctx.phase_index]
+        in_termination = current_stage.solver is None
+        
+        # Only run search steps if not in termination phase
+        if not in_termination:
+            solver = current_stage.solver
             # Correctly account for evaluations: generations * population size
             pop_size = getattr(solver, 'population_size', 1)
 
@@ -98,7 +105,15 @@ class StageController:
                     break
 
         self.ctx.decision_count += 1
-        truncated = self.ctx.decision_count >= self.ctx.max_decision_steps
+        
+        # Episode terminates when:
+        # 1. We enter termination phase (natural end of pipeline)
+        # 2. Max search steps exceeded
+        terminated = in_termination or terminated or \
+                     (self.ctx.max_search_steps is not None and self.ctx.search_step_count >= self.ctx.max_search_steps)
+        
+        # Truncated if we run out of decision budget without terminating
+        truncated = (not terminated) and (self.ctx.decision_count >= self.ctx.max_decision_steps)
         self._update_best()
 
         return StageStepResult(
@@ -122,40 +137,35 @@ class StageController:
         return self.ctx.best_solution
 
     def _advance_stage(self) -> bool:
+        """Advance to the next phase. Returns True if successfully advanced."""
         if self.ctx.phase_index >= len(self.ctx.stages) - 1:
             return False
 
-        seeds = self.ctx.current_solver().export_population()
+        # Export population from current solver (if it exists)
+        current_solver = self.ctx.current_solver()
+        seeds = current_solver.export_population() if current_solver is not None else []
+        
         self.ctx.phase_index += 1
+        
+        # Ingest population into next solver (if it exists - termination phase has no solver)
         next_solver = self.ctx.current_solver()
-        if hasattr(next_solver, "ingest_population"):
-            next_solver.ingest_population(seeds)
-        else:
-            # Best-effort fallback for solvers that haven't implemented ingest.
-            next_solver.population = seeds
-            if hasattr(next_solver, "_update_best_solution"):
-                next_solver._update_best_solution()
+        if next_solver is not None:
+            if hasattr(next_solver, "ingest_population"):
+                next_solver.ingest_population(seeds)
+            else:
+                # Best-effort fallback for solvers that haven't implemented ingest.
+                next_solver.population = seeds
+                if hasattr(next_solver, "_update_best_solution"):
+                    next_solver._update_best_solution()
         return True
 
     def _update_best(self) -> None:
-        exp_best = None
-        exp_solver = self.ctx.stages[0].solver if self.ctx.stages else None
-        if exp_solver is not None:
-            exp_best = exp_solver.get_best()
-        exp_fit = exp_best.fitness if exp_best else float("inf")
-
-        exploit_solver = None
-        if len(self.ctx.stages) > 1 and self.ctx.phase_index > 0:
-            exploit_solver = self.ctx.current_solver()
-        exploit_best = exploit_solver.get_best() if exploit_solver else None
-        exploit_fit = exploit_best.fitness if exploit_best else float("inf")
-
-        current_best = self.ctx.best_solution
-        current_fit = current_best.fitness if current_best else float("inf")
-
-        if exp_fit < current_fit:
-            self.ctx.best_solution = exp_best
-            current_fit = exp_fit
-
-        if exploit_fit < current_fit:
-            self.ctx.best_solution = exploit_best
+        """Update best solution by checking all stages with solvers."""
+        for stage in self.ctx.stages:
+            # Skip termination phase (no solver)
+            if stage.solver is None:
+                continue
+            stage_best = stage.solver.get_best()
+            if stage_best:
+                if self.ctx.best_solution is None or stage_best < self.ctx.best_solution:
+                    self.ctx.best_solution = stage_best.copy(preserve_id=True)

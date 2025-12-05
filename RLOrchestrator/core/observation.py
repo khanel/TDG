@@ -110,7 +110,12 @@ class ObservationComputer:
         solver = state.solver
         phase = state.phase
         step_ratio = state.step_ratio
-        best_solution = state.best_solution or solver.get_best()
+        
+        # Handle termination phase (solver may be None)
+        if solver is not None:
+            best_solution = state.best_solution or solver.get_best()
+        else:
+            best_solution = state.best_solution
         
         # === 0. Budget Consumed (0 at start, 1 at end) ===
         budget_consumed = float(np.clip(step_ratio, 0.0, 1.0))
@@ -153,7 +158,13 @@ class ObservationComputer:
         stagnation = self._compute_stagnation()
         
         # === 4. Population Diversity ===
-        population = state.population if state.population is not None else solver.get_population()
+        # Handle termination phase (solver may be None)
+        if state.population is not None:
+            population = state.population
+        elif solver is not None:
+            population = solver.get_population()
+        else:
+            population = []
         diversity = self._compute_population_diversity(population)
         
         # === 5. Phase Encoding (3-phase: 0.0/0.5/1.0) ===
