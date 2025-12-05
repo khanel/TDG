@@ -8,10 +8,12 @@ from .context import BudgetSpec, OrchestratorContext, StageBinding
 from .orchestrator import OrchestratorEnv
 from .observation import ObservationComputer
 from .stage_controller import StageController
+from .deployment import DeployableOrchestrator, ObservationConfig, PRESETS, create_deployable_agent
 from .utils import *
 
 __all__ = [
     'BudgetSpec', 'OrchestratorContext', 'StageBinding',
     'StageController', 'OrchestratorEnv',
     'ObservationComputer',
+    'DeployableOrchestrator', 'ObservationConfig', 'PRESETS', 'create_deployable_agent',
 ]
