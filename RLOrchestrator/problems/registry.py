@@ -182,19 +182,33 @@ def _register_builtin_definitions():
     )
     from ..maxcut.adapter import MaxCutAdapter
     from ..maxcut.solvers import (
-        MaxCutArtificialBeeColony,
-        MaxCutBitFlipExploiter,
-        MaxCutGravitationalSearch,
-        MaxCutHarrisHawks,
-        MaxCutLSHADE,
-        MaxCutMarinePredators,
-        MaxCutMemeticAlgorithm,
-        MaxCutRandomExplorer,
-        MaxCutSlimeMould,
-        MaxCutWhaleOptimization,
+        # Explorer variants (11 total)
+        MaxCutMapElitesExplorer,
+        MaxCutGAExplorer,
+        MaxCutPSOExplorer,
+        MaxCutGWOExplorer,
+        MaxCutABCExplorer,
+        MaxCutWOAExplorer,
+        MaxCutHHOExplorer,
+        MaxCutMPAExplorer,
+        MaxCutSMAExplorer,
+        MaxCutGSAExplorer,
+        MaxCutDiversityExplorer,
+        # Exploiter variants (13 total)
+        MaxCutGreedyExploiter,
+        MaxCutGAExploiter,
+        MaxCutPSOExploiter,
+        MaxCutGWOExploiter,
+        MaxCutABCExploiter,
+        MaxCutWOAExploiter,
+        MaxCutHHOExploiter,
+        MaxCutMPAExploiter,
+        MaxCutSMAExploiter,
+        MaxCutGSAExploiter,
+        MaxCutHillClimbingExploiter,
+        MaxCutMemeticExploiter,
+        MaxCutLSHADEExploiter,
     )
-    from GSA.gsa import GSAConfig
-    from LSHADE.lshade import LSHADEConfig
     from ..knapsack.adapter import KnapsackAdapter
     from ..knapsack.solvers import (
         # Explorer variants (11 total)
@@ -303,24 +317,35 @@ def _register_builtin_definitions():
         )
     )
 
+    # MaxCut: Full 11x13 explorer/exploiter pool for solver-agnostic training
     maxcut_explorers = [
-        SolverFactory(MaxCutRandomExplorer, {"population_size": 64, "flip_probability": 0.2}),
-        SolverFactory(MaxCutArtificialBeeColony, {"population_size": 96, "random_injection_rate": 0.3, "limit_factor": 1.3}),
-        SolverFactory(MaxCutGravitationalSearch, {"population_size": 72}),
-        SolverFactory(MaxCutHarrisHawks, {"population_size": 56, "max_iterations": 600}),
-        SolverFactory(MaxCutMarinePredators, {"population_size": 64, "fad_probability": 0.25}),
-        SolverFactory(MaxCutSlimeMould, {"population_size": 64}),
-        SolverFactory(MaxCutWhaleOptimization, {"population_size": 48, "b": 1.1}),
+        SolverFactory(MaxCutMapElitesExplorer, {"population_size": 64, "n_bins": 10, "mutation_rate": 0.15}),
+        SolverFactory(MaxCutGAExplorer, {"population_size": 64, "mutation_rate": 0.15, "crossover_rate": 0.7, "random_injection_rate": 0.1}),
+        SolverFactory(MaxCutPSOExplorer, {"population_size": 56, "w": 0.9, "c1": 2.5, "c2": 0.5}),
+        SolverFactory(MaxCutGWOExplorer, {"population_size": 48, "a_initial": 3.0, "a_final": 1.0, "random_wolf_prob": 0.3}),
+        SolverFactory(MaxCutABCExplorer, {"population_size": 72, "limit_factor": 0.5, "perturbation_scale": 0.8}),
+        SolverFactory(MaxCutWOAExplorer, {"population_size": 48, "a_initial": 3.0, "encircle_prob": 0.3}),
+        SolverFactory(MaxCutHHOExplorer, {"population_size": 56, "exploration_bias": 0.7, "random_hawk_prob": 0.5}),
+        SolverFactory(MaxCutMPAExplorer, {"population_size": 60, "fad_probability": 0.4, "brownian_scale": 1.5}),
+        SolverFactory(MaxCutSMAExplorer, {"population_size": 64, "random_position_prob": 0.4, "mutation_rate": 0.15}),
+        SolverFactory(MaxCutGSAExplorer, {"population_size": 56, "G0": 200.0, "alpha": 10.0}),
+        SolverFactory(MaxCutDiversityExplorer, {"population_size": 48, "mutation_rate": 0.2, "random_injection_rate": 0.25}),
     ]
 
     maxcut_exploiters = [
-        SolverFactory(MaxCutBitFlipExploiter, {"population_size": 20, "moves_per_step": 12}),
-        SolverFactory(MaxCutArtificialBeeColony, {"population_size": 60, "random_injection_rate": 0.05, "perturbation_scale": 0.25, "limit_factor": 0.9}),
-        SolverFactory(MaxCutMemeticAlgorithm, {"population_size": 40, "mutation_rate": 0.2, "local_search_steps": 5}),
-        SolverFactory(MaxCutLSHADE, {"population_size": 64}),
-        SolverFactory(MaxCutGravitationalSearch, {"population_size": 48}),
-        SolverFactory(MaxCutHarrisHawks, {"population_size": 36, "max_iterations": 500}),
-        SolverFactory(MaxCutWhaleOptimization, {"population_size": 32, "b": 0.7}),
+        SolverFactory(MaxCutGreedyExploiter, {"population_size": 32, "n_flips": 10}),
+        SolverFactory(MaxCutGAExploiter, {"population_size": 56, "mutation_rate": 0.02, "elitism_rate": 0.1}),
+        SolverFactory(MaxCutPSOExploiter, {"population_size": 48, "w": 0.4, "c1": 1.0, "c2": 2.5}),
+        SolverFactory(MaxCutGWOExploiter, {"population_size": 40, "a_initial": 2.0, "a_final": 0.0}),
+        SolverFactory(MaxCutABCExploiter, {"population_size": 60, "limit_factor": 3.0, "perturbation_scale": 0.2}),
+        SolverFactory(MaxCutWOAExploiter, {"population_size": 36, "a_initial": 2.0, "encircle_prob": 0.7, "spiral_b": 0.5}),
+        SolverFactory(MaxCutHHOExploiter, {"population_size": 40, "exploitation_bias": 0.8}),
+        SolverFactory(MaxCutMPAExploiter, {"population_size": 48, "fad_probability": 0.05, "levy_scale": 0.5}),
+        SolverFactory(MaxCutSMAExploiter, {"population_size": 56, "random_position_prob": 0.03}),
+        SolverFactory(MaxCutGSAExploiter, {"population_size": 48, "G0": 100.0, "alpha": 30.0}),
+        SolverFactory(MaxCutHillClimbingExploiter, {"population_size": 24, "n_neighbors": 10}),
+        SolverFactory(MaxCutMemeticExploiter, {"population_size": 40, "local_search_prob": 0.8, "local_search_steps": 10}),
+        SolverFactory(MaxCutLSHADEExploiter, {"population_size": 64, "p_best_rate": 0.05}),
     ]
 
     register_problem(
@@ -332,7 +357,12 @@ def _register_builtin_definitions():
                 "exploration": maxcut_explorers,
                 "exploitation": maxcut_exploiters,
             },
-            metadata={"description": "Erdos-Renyi Max-Cut with diverse solver catalog."},
+            metadata={
+                "description": "MaxCut with full 11x13 properly-tuned explorer/exploiter pool.",
+                "explorer_count": 11,
+                "exploiter_count": 13,
+                "total_pairings": 11 * 13,  # 143 unique solver combinations
+            },
         )
     )
 
