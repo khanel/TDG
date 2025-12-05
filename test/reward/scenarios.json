@@ -1,0 +1,3079 @@
+{
+  "_metadata": {
+    "version": "4.0",
+    "description": "Complete validation scenarios for 3-phase RL hyper-heuristic orchestrator",
+    "author": "Validation Framework",
+    "created": "2025-12-03",
+    "design_principles": [
+      "EFFECTIVENESS FIRST: Quality is MANDATORY - efficiency bonus is ZERO unless quality >= 0.7",
+      "EFFICIENCY SECOND: Only after quality threshold is met does budget savings provide bonus",
+      "NO COMPENSATION: Fast + poor quality is WORSE than slow + poor quality (wasted opportunity to improve)",
+      "QUALITY GATES EVERYTHING: Low quality termination = heavily negative, regardless of speed",
+      "Problem-agnostic: all values normalized [0,1], quality = 1 - fitness_norm",
+      "Phase-coupled: transitions affect state (stagnation resets on phase switch)",
+      "Cumulative-aware: trajectory validation, not just single-step rewards",
+      "Gradient-friendly: test points at critical thresholds for smoothness"
+    ],
+    "state_variables": {
+      "improvement_binary": "{0,1} - whether improvement occurred this step",
+      "diversity_score": "[0,1] - population diversity (1=max diverse)",
+      "stagnation_ratio": "[0,1] - steps without improvement / window (1=fully stagnant)",
+      "budget_consumed": "[0,1] - fraction of total budget used",
+      "fitness_norm": "[0,1] - normalized fitness (0=optimal, 1=worst)"
+    },
+    "phases": {
+      "EXPLORATION": "Action 0=STAY, Action 1=ADVANCE to Exploitation",
+      "EXPLOITATION": "Action 0=STAY, Action 1=ADVANCE to Termination",
+      "TERMINATION": "No action, episode ends, terminal reward computed"
+    },
+    "quality_note": "quality = 1 - fitness_norm (0=worst, 1=optimal)"
+  },
+  "_comment_structure": [
+    "PART 1: single_state_scenarios - Individual step reward validation (DONE)",
+    "PART 2: trajectory_scenarios - Complete episode cumulative validation (TODO)",
+    "PART 3: ranking_constraints - Ordinal comparisons between trajectories (TODO)",
+    "PART 4: gradient_test_points - Smoothness validation at thresholds (TODO)"
+  ],
+  "single_state_scenarios": [
+    {
+      "_section": "=== EXPLORATION PHASE: STAY ACTION (Action=0) ==="
+    },
+    {
+      "id": "E1_Eureka",
+      "description": "Found improvement with high diversity - best exploration outcome",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 1,
+        "diversity_score": 0.9,
+        "stagnation_ratio": 0.0,
+        "budget_consumed": 0.2,
+        "fitness_norm": 0.5
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": 0.3,
+        "sign": "positive",
+        "must_have_component": "exploration_success"
+      }
+    },
+    {
+      "id": "E2_Eureka_Low_Diversity",
+      "description": "Found improvement but with low diversity - still positive but less",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 1,
+        "diversity_score": 0.2,
+        "stagnation_ratio": 0.0,
+        "budget_consumed": 0.2,
+        "fitness_norm": 0.5
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": 0.1,
+        "max_value": 0.5,
+        "sign": "positive",
+        "must_have_component": "exploration_success"
+      }
+    },
+    {
+      "id": "E3_Blind_Walk_Diverse",
+      "description": "No improvement but maintaining high diversity - small positive signal",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.9,
+        "stagnation_ratio": 0.1,
+        "budget_consumed": 0.2,
+        "fitness_norm": 0.5
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": -0.05,
+        "max_value": 0.2,
+        "must_have_component": "diversity_bonus"
+      }
+    },
+    {
+      "id": "E4_Blind_Walk_Low_Diversity",
+      "description": "No improvement, low diversity, low stagnation - neutral/slight negative",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.2,
+        "stagnation_ratio": 0.15,
+        "budget_consumed": 0.2,
+        "fitness_norm": 0.5
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": -0.15,
+        "max_value": 0.05
+      }
+    },
+    {
+      "id": "E5_Stagnant_Explorer_Moderate",
+      "description": "Moderate stagnation without improvement - mild penalty",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.5,
+        "stagnation_ratio": 0.5,
+        "budget_consumed": 0.3,
+        "fitness_norm": 0.5
+      },
+      "action": 0,
+      "assertions": {
+        "max_value": 0.0,
+        "sign": "negative"
+      }
+    },
+    {
+      "id": "E6_Stagnant_Explorer_Severe",
+      "description": "High stagnation without improvement - strong penalty, push to switch",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.3,
+        "stagnation_ratio": 0.9,
+        "budget_consumed": 0.4,
+        "fitness_norm": 0.5
+      },
+      "action": 0,
+      "assertions": {
+        "max_value": -0.2,
+        "sign": "negative",
+        "must_have_component": "stagnation_penalty"
+      }
+    },
+    {
+      "id": "E7_Desert_Walk",
+      "description": "No improvement, collapsed diversity, high stagnation - strong push to advance",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.95,
+        "budget_consumed": 0.5,
+        "fitness_norm": 0.6
+      },
+      "action": 0,
+      "assertions": {
+        "max_value": -0.3,
+        "sign": "negative",
+        "must_have_component": "stagnation_penalty"
+      }
+    },
+    {
+      "id": "E8_Initial_State",
+      "description": "First step of episode - fresh start, baseline reward",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.8,
+        "stagnation_ratio": 0.0,
+        "budget_consumed": 0.01,
+        "fitness_norm": 0.9
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": -0.1,
+        "max_value": 0.15
+      }
+    },
+    {
+      "id": "E9_Recovery_After_Stagnation",
+      "description": "Found improvement after period of stagnation - rewarded",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 1,
+        "diversity_score": 0.6,
+        "stagnation_ratio": 0.7,
+        "budget_consumed": 0.35,
+        "fitness_norm": 0.4
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": 0.2,
+        "sign": "positive",
+        "must_have_component": "exploration_success"
+      }
+    },
+    {
+      "id": "E10_High_Budget_Pressure",
+      "description": "Near budget exhaustion while exploring - pressure to advance",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.5,
+        "stagnation_ratio": 0.3,
+        "budget_consumed": 0.9,
+        "fitness_norm": 0.5
+      },
+      "action": 0,
+      "assertions": {
+        "max_value": -0.1,
+        "sign": "negative",
+        "must_have_component": "budget_pressure"
+      }
+    },
+    {
+      "id": "E11_Diversity_Maintaining_High_Stagnation",
+      "description": "High stagnation but still diverse - penalty mitigated by diversity",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.9,
+        "stagnation_ratio": 0.8,
+        "budget_consumed": 0.4,
+        "fitness_norm": 0.5
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": -0.4,
+        "max_value": -0.05
+      }
+    },
+    {
+      "_section": "=== EXPLORATION PHASE: ADVANCE ACTION (Action=1) ==="
+    },
+    {
+      "id": "E12_Timely_Switch",
+      "description": "Advance to exploitation when stagnant and low diversity - good decision",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.3,
+        "stagnation_ratio": 0.8,
+        "budget_consumed": 0.3,
+        "fitness_norm": 0.4
+      },
+      "action": 1,
+      "assertions": {
+        "min_value": 0.2,
+        "sign": "positive",
+        "must_have_component": "timely_switch"
+      }
+    },
+    {
+      "id": "E13_Moderate_Stagnation_Switch",
+      "description": "Advance at moderate stagnation - acceptable decision",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.4,
+        "stagnation_ratio": 0.5,
+        "budget_consumed": 0.25,
+        "fitness_norm": 0.45
+      },
+      "action": 1,
+      "assertions": {
+        "min_value": -0.1,
+        "max_value": 0.4
+      }
+    },
+    {
+      "id": "E14_Premature_Switch_Improving",
+      "description": "Advance while still finding improvements - bad decision",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 1,
+        "diversity_score": 0.8,
+        "stagnation_ratio": 0.0,
+        "budget_consumed": 0.2,
+        "fitness_norm": 0.5
+      },
+      "action": 1,
+      "assertions": {
+        "max_value": -0.2,
+        "sign": "negative",
+        "must_have_component": "premature_switch_penalty"
+      }
+    },
+    {
+      "id": "E15_Very_Early_Switch",
+      "description": "Advance with near-zero stagnation (barely started) - strongly penalized",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.7,
+        "stagnation_ratio": 0.05,
+        "budget_consumed": 0.02,
+        "fitness_norm": 0.8
+      },
+      "action": 1,
+      "assertions": {
+        "max_value": -0.3,
+        "sign": "negative",
+        "must_have_component": "very_early_switch_penalty"
+      }
+    },
+    {
+      "id": "E16_Switch_At_Threshold",
+      "description": "Advance exactly at stagnation threshold - boundary test",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.4,
+        "stagnation_ratio": 0.4,
+        "budget_consumed": 0.25,
+        "fitness_norm": 0.5
+      },
+      "action": 1,
+      "assertions": {
+        "min_value": -0.2,
+        "max_value": 0.3
+      }
+    },
+    {
+      "id": "E17_Late_Budget_Force_Switch",
+      "description": "Forced to switch due to budget pressure - acceptable",
+      "phase": "EXPLORATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.5,
+        "stagnation_ratio": 0.4,
+        "budget_consumed": 0.85,
+        "fitness_norm": 0.45
+      },
+      "action": 1,
+      "assertions": {
+        "min_value": -0.2,
+        "max_value": 0.3
+      }
+    },
+    {
+      "_section": "=== EXPLOITATION PHASE: STAY ACTION (Action=0) ==="
+    },
+    {
+      "id": "X1_Gold_Mine_High_Quality",
+      "description": "Found improvement with high quality solution - best exploitation outcome",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 1,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.0,
+        "budget_consumed": 0.5,
+        "fitness_norm": 0.1
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": 0.5,
+        "sign": "positive",
+        "must_have_component": "exploitation_success"
+      }
+    },
+    {
+      "id": "X2_Gold_Mine_Medium_Quality",
+      "description": "Found improvement with medium quality solution",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 1,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.0,
+        "budget_consumed": 0.5,
+        "fitness_norm": 0.5
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": 0.3,
+        "max_value": 0.8,
+        "sign": "positive",
+        "must_have_component": "exploitation_success"
+      }
+    },
+    {
+      "id": "X3_Gold_Mine_Low_Quality",
+      "description": "Found improvement but solution quality still low",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 1,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.0,
+        "budget_consumed": 0.5,
+        "fitness_norm": 0.8
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": 0.1,
+        "max_value": 0.5,
+        "sign": "positive",
+        "must_have_component": "exploitation_success"
+      }
+    },
+    {
+      "id": "X4_The_Grind",
+      "description": "No improvement, not stagnant yet - just step cost",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.3,
+        "budget_consumed": 0.5,
+        "fitness_norm": 0.4
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": -0.15,
+        "max_value": 0.0
+      }
+    },
+    {
+      "id": "X5_Phase_Entry_Fresh",
+      "description": "Just entered exploitation phase - stagnation reset, fresh start",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.3,
+        "stagnation_ratio": 0.0,
+        "budget_consumed": 0.25,
+        "fitness_norm": 0.45
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": -0.1,
+        "max_value": 0.05
+      }
+    },
+    {
+      "id": "X6_Stagnant_Exploitation_Moderate",
+      "description": "Moderate stagnation in exploitation - mild penalty",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.6,
+        "budget_consumed": 0.55,
+        "fitness_norm": 0.35
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": -0.2,
+        "max_value": 0.0
+      }
+    },
+    {
+      "id": "X7_Stagnant_Exploitation_Severe",
+      "description": "High stagnation, should advance to termination - penalty for staying",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.9,
+        "budget_consumed": 0.6,
+        "fitness_norm": 0.3
+      },
+      "action": 0,
+      "assertions": {
+        "max_value": -0.1,
+        "sign": "negative",
+        "must_have_component": "exploitation_stagnation"
+      }
+    },
+    {
+      "id": "X8_Quality_Plateau",
+      "description": "Stuck at medium quality, high stagnation - push to terminate",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.85,
+        "budget_consumed": 0.65,
+        "fitness_norm": 0.5
+      },
+      "action": 0,
+      "assertions": {
+        "max_value": -0.05,
+        "sign": "negative"
+      }
+    },
+    {
+      "id": "X9_High_Budget_Pressure",
+      "description": "Near budget exhaustion while exploiting - pressure penalty",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.4,
+        "budget_consumed": 0.92,
+        "fitness_norm": 0.35
+      },
+      "action": 0,
+      "assertions": {
+        "max_value": -0.1,
+        "sign": "negative",
+        "must_have_component": "budget_pressure"
+      }
+    },
+    {
+      "_section": "=== EXPLOITATION PHASE: ADVANCE ACTION (Action=1) ==="
+    },
+    {
+      "id": "X10_Timely_Advance",
+      "description": "Advance to termination when stagnant - good decision",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.8,
+        "budget_consumed": 0.55,
+        "fitness_norm": 0.25
+      },
+      "action": 1,
+      "assertions": {
+        "min_value": 0.1,
+        "sign": "positive",
+        "must_have_component": "timely_advance"
+      }
+    },
+    {
+      "id": "X11_Moderate_Stagnation_Advance",
+      "description": "Advance at moderate stagnation - acceptable",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.6,
+        "budget_consumed": 0.5,
+        "fitness_norm": 0.3
+      },
+      "action": 1,
+      "assertions": {
+        "min_value": -0.15,
+        "max_value": 0.35
+      }
+    },
+    {
+      "id": "X12_Uncertain_Advance",
+      "description": "Advance without clear stagnation signal - penalized",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.35,
+        "budget_consumed": 0.45,
+        "fitness_norm": 0.4
+      },
+      "action": 1,
+      "assertions": {
+        "max_value": 0.0,
+        "must_have_component": "uncertain_advance"
+      }
+    },
+    {
+      "id": "X13_Premature_Advance_Improving",
+      "description": "Advance while still finding improvements - bad decision",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 1,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.0,
+        "budget_consumed": 0.45,
+        "fitness_norm": 0.25
+      },
+      "action": 1,
+      "assertions": {
+        "max_value": -0.2,
+        "sign": "negative",
+        "must_have_component": "premature_advance_penalty"
+      }
+    },
+    {
+      "id": "X14_Very_Early_Advance",
+      "description": "Advance immediately after phase switch (stagnation just reset) - strongly penalized",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.2,
+        "stagnation_ratio": 0.1,
+        "budget_consumed": 0.25,
+        "fitness_norm": 0.45
+      },
+      "action": 1,
+      "assertions": {
+        "max_value": -0.3,
+        "sign": "negative",
+        "must_have_component": "very_early_advance_penalty"
+      }
+    },
+    {
+      "id": "X15_Advance_At_Threshold",
+      "description": "Advance exactly at stagnation threshold - boundary test",
+      "phase": "EXPLOITATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.6,
+        "budget_consumed": 0.5,
+        "fitness_norm": 0.35
+      },
+      "action": 1,
+      "assertions": {
+        "min_value": -0.2,
+        "max_value": 0.35
+      }
+    },
+    {
+      "_section": "=== TERMINATION PHASE (Action=0, episode ends) ==="
+    },
+    {
+      "id": "T1_Excellent_Quality_Early",
+      "description": "Terminate with excellent quality (0.95) and budget remaining - QUALITY UNLOCKS efficiency bonus",
+      "phase": "TERMINATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.7,
+        "budget_consumed": 0.4,
+        "fitness_norm": 0.05
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": 0.6,
+        "sign": "positive",
+        "must_have_component": "quality_reward",
+        "efficiency_bonus_unlocked": true,
+        "_note": "quality=0.95 >= 0.7, so efficiency bonus APPLIES"
+      }
+    },
+    {
+      "id": "T2_Excellent_Quality_Late",
+      "description": "Terminate with excellent quality but budget exhausted - high reward, no efficiency",
+      "phase": "TERMINATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.9,
+        "budget_consumed": 0.95,
+        "fitness_norm": 0.08
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": 0.3,
+        "sign": "positive",
+        "must_have_component": "termination_quality_reward"
+      }
+    },
+    {
+      "id": "T3_Good_Quality",
+      "description": "Terminate with good quality - positive reward",
+      "phase": "TERMINATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.8,
+        "budget_consumed": 0.6,
+        "fitness_norm": 0.2
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": 0.1,
+        "sign": "positive",
+        "must_have_component": "termination_quality_reward"
+      }
+    },
+    {
+      "id": "T4_Medium_Quality",
+      "description": "Terminate with medium quality - near zero or slightly positive",
+      "phase": "TERMINATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.75,
+        "budget_consumed": 0.65,
+        "fitness_norm": 0.4
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": -0.3,
+        "max_value": 0.3
+      }
+    },
+    {
+      "id": "T5_Poor_Quality_Early",
+      "description": "CRITICAL: Terminate FAST with poor quality (0.2) - THIS IS NOT EFFICIENCY, THIS IS FAILURE",
+      "phase": "TERMINATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.3,
+        "budget_consumed": 0.15,
+        "fitness_norm": 0.8
+      },
+      "action": 0,
+      "assertions": {
+        "max_value": -0.5,
+        "sign": "negative",
+        "must_have_component": "quality_failure_penalty",
+        "efficiency_bonus_unlocked": false,
+        "_note": "quality=0.2 < 0.7, so efficiency bonus = 0. Fast failure is NOT efficient - it's just fast failure!"
+      }
+    },
+    {
+      "id": "T6_Poor_Quality_Late",
+      "description": "Terminate with poor quality and budget exhausted - penalty",
+      "phase": "TERMINATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.9,
+        "budget_consumed": 0.95,
+        "fitness_norm": 0.75
+      },
+      "action": 0,
+      "assertions": {
+        "max_value": -0.15,
+        "sign": "negative",
+        "must_have_component": "termination_poor_quality"
+      }
+    },
+    {
+      "id": "T7_Very_Poor_Quality",
+      "description": "CRITICAL: Terminate with very poor quality (0.1) - STRONG PENALTY regardless of budget",
+      "phase": "TERMINATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.5,
+        "budget_consumed": 0.5,
+        "fitness_norm": 0.9
+      },
+      "action": 0,
+      "assertions": {
+        "max_value": -0.6,
+        "sign": "negative",
+        "must_have_component": "quality_failure_penalty",
+        "efficiency_bonus_unlocked": false,
+        "_note": "quality=0.1 is terrible. No amount of efficiency can save this. Finding shit is not success."
+      }
+    },
+    {
+      "id": "T8_Threshold_Quality_Just_Above",
+      "description": "Terminate just above quality threshold - small positive",
+      "phase": "TERMINATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.7,
+        "budget_consumed": 0.6,
+        "fitness_norm": 0.28
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": 0.0,
+        "max_value": 0.4
+      }
+    },
+    {
+      "id": "T9_Threshold_Quality_Just_Below",
+      "description": "Terminate just below quality threshold - small negative",
+      "phase": "TERMINATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.7,
+        "budget_consumed": 0.6,
+        "fitness_norm": 0.35
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": -0.35,
+        "max_value": 0.2
+      }
+    },
+    {
+      "id": "T10_Mediocre_Late",
+      "description": "Terminate with mediocre quality at budget exhaustion - near zero",
+      "phase": "TERMINATION",
+      "inputs": {
+        "improvement_binary": 0,
+        "diversity_score": 0.1,
+        "stagnation_ratio": 0.9,
+        "budget_consumed": 0.98,
+        "fitness_norm": 0.45
+      },
+      "action": 0,
+      "assertions": {
+        "min_value": -0.4,
+        "max_value": 0.15
+      }
+    }
+  ],
+  "trajectory_scenarios": [
+    {
+      "_section": "=== HIGH RANKING TRAJECTORIES (Best strategies) ==="
+    },
+    {
+      "id": "TR1_OPTIMAL_BALANCED",
+      "description": "Ideal: proper exploration (25%) -> exploitation (35%) -> high quality termination",
+      "expected_ranking": "high",
+      "steps": [
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.9,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.05,
+            "fitness_norm": 0.85
+          },
+          "note": "Initial improvement, high diversity"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.85,
+            "stagnation_ratio": 0.1,
+            "budget_consumed": 0.08,
+            "fitness_norm": 0.8
+          },
+          "note": "Maintaining diversity"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.8,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.11,
+            "fitness_norm": 0.7
+          },
+          "note": "Another improvement"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.75,
+            "stagnation_ratio": 0.15,
+            "budget_consumed": 0.14,
+            "fitness_norm": 0.65
+          },
+          "note": "Exploring"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.7,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.17,
+            "fitness_norm": 0.55
+          },
+          "note": "Good improvement"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.6,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.20,
+            "fitness_norm": 0.5
+          },
+          "note": "Stagnation building"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.55,
+            "stagnation_ratio": 0.35,
+            "budget_consumed": 0.23,
+            "fitness_norm": 0.48
+          },
+          "note": "More stagnation"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.5,
+            "budget_consumed": 0.25,
+            "fitness_norm": 0.45
+          },
+          "note": "Timely switch at stagnation"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.28,
+            "fitness_norm": 0.4
+          },
+          "note": "Immediate refinement"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.35,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.32,
+            "fitness_norm": 0.35
+          },
+          "note": "More refinement"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.15,
+            "budget_consumed": 0.36,
+            "fitness_norm": 0.32
+          },
+          "note": "Grinding"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.25,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.40,
+            "fitness_norm": 0.28
+          },
+          "note": "Another gain"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.2,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.44,
+            "fitness_norm": 0.25
+          },
+          "note": "Grinding"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.18,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.48,
+            "fitness_norm": 0.2
+          },
+          "note": "Strong improvement"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.15,
+            "stagnation_ratio": 0.25,
+            "budget_consumed": 0.52,
+            "fitness_norm": 0.18
+          },
+          "note": "Grinding"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.12,
+            "stagnation_ratio": 0.45,
+            "budget_consumed": 0.55,
+            "fitness_norm": 0.16
+          },
+          "note": "Stagnation building"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.1,
+            "stagnation_ratio": 0.6,
+            "budget_consumed": 0.58,
+            "fitness_norm": 0.15
+          },
+          "note": "High stagnation"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.1,
+            "stagnation_ratio": 0.75,
+            "budget_consumed": 0.60,
+            "fitness_norm": 0.14
+          },
+          "note": "Timely advance to termination"
+        },
+        {
+          "phase": "TERMINATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.1,
+            "stagnation_ratio": 0.75,
+            "budget_consumed": 0.60,
+            "fitness_norm": 0.14
+          },
+          "note": "Excellent quality, budget remaining"
+        }
+      ],
+      "assertions": {
+        "cumulative_sign": "positive",
+        "cumulative_min": 1.5,
+        "final_quality_min": 0.8,
+        "per_step_avg_min": 0.05
+      }
+    },
+    {
+      "id": "TR2_HIGH_QUALITY_EFFICIENT",
+      "description": "Fast but successful: found good solution quickly, terminated efficiently",
+      "expected_ranking": "high",
+      "steps": [
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.85,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.05,
+            "fitness_norm": 0.6
+          },
+          "note": "Quick improvement"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.8,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.10,
+            "fitness_norm": 0.4
+          },
+          "note": "Another improvement"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.7,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.15,
+            "fitness_norm": 0.35
+          },
+          "note": "Stagnation starting"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.6,
+            "stagnation_ratio": 0.4,
+            "budget_consumed": 0.20,
+            "fitness_norm": 0.32
+          },
+          "note": "More stagnation"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.55,
+            "budget_consumed": 0.22,
+            "fitness_norm": 0.3
+          },
+          "note": "Switch at good stagnation"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.25,
+            "fitness_norm": 0.22
+          },
+          "note": "Strong refinement"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.28,
+            "fitness_norm": 0.15
+          },
+          "note": "More refinement"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.25,
+            "stagnation_ratio": 0.3,
+            "budget_consumed": 0.32,
+            "fitness_norm": 0.12
+          },
+          "note": "Grinding"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.2,
+            "stagnation_ratio": 0.55,
+            "budget_consumed": 0.35,
+            "fitness_norm": 0.1
+          },
+          "note": "Stagnation"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.15,
+            "stagnation_ratio": 0.7,
+            "budget_consumed": 0.38,
+            "fitness_norm": 0.08
+          },
+          "note": "Timely termination"
+        },
+        {
+          "phase": "TERMINATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.15,
+            "stagnation_ratio": 0.7,
+            "budget_consumed": 0.38,
+            "fitness_norm": 0.08
+          },
+          "note": "Excellent quality (0.92) UNLOCKS efficiency bonus for remaining 62% budget"
+        }
+      ],
+      "assertions": {
+        "cumulative_sign": "positive",
+        "cumulative_min": 1.5,
+        "final_quality_min": 0.9,
+        "efficiency_bonus_unlocked": true,
+        "_note": "EFFECTIVENESS FIRST: quality=0.92 >= 0.7, so efficiency bonus APPLIES. This is the ideal: effective AND efficient."
+      }
+    },
+    {
+      "id": "TR3_LONG_EXPLOITATION_SUCCESS",
+      "description": "Short exploration but persistent exploitation leads to high quality",
+      "expected_ranking": "high",
+      "steps": [
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.7,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.05,
+            "fitness_norm": 0.8
+          },
+          "note": "No luck exploring"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.6,
+            "stagnation_ratio": 0.4,
+            "budget_consumed": 0.10,
+            "fitness_norm": 0.75
+          },
+          "note": "Still no luck"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.6,
+            "budget_consumed": 0.12,
+            "fitness_norm": 0.72
+          },
+          "note": "Switch due to stagnation"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.15,
+            "fitness_norm": 0.6
+          },
+          "note": "Finally improving"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.35,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.20,
+            "fitness_norm": 0.5
+          },
+          "note": "Good progress"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.15,
+            "budget_consumed": 0.25,
+            "fitness_norm": 0.45
+          },
+          "note": "Grinding"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.25,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.30,
+            "fitness_norm": 0.38
+          },
+          "note": "Another gain"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.2,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.35,
+            "fitness_norm": 0.35
+          },
+          "note": "Grinding"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.18,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.40,
+            "fitness_norm": 0.28
+          },
+          "note": "Good improvement"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.15,
+            "stagnation_ratio": 0.25,
+            "budget_consumed": 0.45,
+            "fitness_norm": 0.25
+          },
+          "note": "Grinding"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.12,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.50,
+            "fitness_norm": 0.18
+          },
+          "note": "Strong improvement"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.1,
+            "stagnation_ratio": 0.3,
+            "budget_consumed": 0.55,
+            "fitness_norm": 0.15
+          },
+          "note": "Grinding"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.1,
+            "stagnation_ratio": 0.5,
+            "budget_consumed": 0.60,
+            "fitness_norm": 0.12
+          },
+          "note": "Stagnation building"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.1,
+            "stagnation_ratio": 0.7,
+            "budget_consumed": 0.65,
+            "fitness_norm": 0.1
+          },
+          "note": "Timely termination"
+        },
+        {
+          "phase": "TERMINATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.1,
+            "stagnation_ratio": 0.7,
+            "budget_consumed": 0.65,
+            "fitness_norm": 0.1
+          },
+          "note": "High quality (0.9), efficiency bonus moderate (35% budget remaining)"
+        }
+      ],
+      "assertions": {
+        "cumulative_sign": "positive",
+        "cumulative_min": 1.0,
+        "final_quality_min": 0.85,
+        "efficiency_bonus_unlocked": true,
+        "_note": "EFFECTIVENESS FIRST: quality=0.9 >= 0.7, so efficiency bonus APPLIES. Slower than TR2 but still effective."
+      }
+    },
+    {
+      "_section": "=== MEDIUM RANKING TRAJECTORIES (Acceptable but suboptimal) ==="
+    },
+    {
+      "id": "TR4_BALANCED_STAGNANT",
+      "description": "Good timing and phase balance but no improvements found (bad luck)",
+      "expected_ranking": "medium",
+      "steps": [
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.8,
+            "stagnation_ratio": 0.1,
+            "budget_consumed": 0.05,
+            "fitness_norm": 0.7
+          },
+          "note": "No luck"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.75,
+            "stagnation_ratio": 0.25,
+            "budget_consumed": 0.10,
+            "fitness_norm": 0.68
+          },
+          "note": "Still nothing"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.7,
+            "stagnation_ratio": 0.4,
+            "budget_consumed": 0.15,
+            "fitness_norm": 0.65
+          },
+          "note": "Stagnating"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.65,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.20,
+            "fitness_norm": 0.6
+          },
+          "note": "One improvement"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.6,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.25,
+            "fitness_norm": 0.58
+          },
+          "note": "Back to stagnation"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.5,
+            "budget_consumed": 0.28,
+            "fitness_norm": 0.55
+          },
+          "note": "Switch at stagnation"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.1,
+            "budget_consumed": 0.32,
+            "fitness_norm": 0.52
+          },
+          "note": "No improvement"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.35,
+            "stagnation_ratio": 0.3,
+            "budget_consumed": 0.38,
+            "fitness_norm": 0.5
+          },
+          "note": "Grinding"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.5,
+            "budget_consumed": 0.45,
+            "fitness_norm": 0.48
+          },
+          "note": "Stagnating"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.25,
+            "stagnation_ratio": 0.65,
+            "budget_consumed": 0.52,
+            "fitness_norm": 0.46
+          },
+          "note": "High stagnation"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.2,
+            "stagnation_ratio": 0.8,
+            "budget_consumed": 0.55,
+            "fitness_norm": 0.45
+          },
+          "note": "Timely advance"
+        },
+        {
+          "phase": "TERMINATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.2,
+            "stagnation_ratio": 0.8,
+            "budget_consumed": 0.55,
+            "fitness_norm": 0.45
+          },
+          "note": "Medium quality"
+        }
+      ],
+      "assertions": {
+        "cumulative_min": -0.5,
+        "cumulative_max": 0.5,
+        "final_quality_min": 0.5,
+        "final_quality_max": 0.6,
+        "efficiency_bonus_unlocked": false,
+        "_note": "quality=0.55 < 0.7, so NO efficiency bonus despite good timing. Effectiveness failed, efficiency irrelevant."
+      }
+    },
+    {
+      "id": "TR5_LATE_SWITCH",
+      "description": "Stayed in exploration too long, not enough time for exploitation",
+      "expected_ranking": "medium",
+      "steps": [
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.9,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.05,
+            "fitness_norm": 0.75
+          },
+          "note": "Improvement"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.85,
+            "stagnation_ratio": 0.15,
+            "budget_consumed": 0.12,
+            "fitness_norm": 0.7
+          },
+          "note": "Exploring"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.8,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.18,
+            "fitness_norm": 0.6
+          },
+          "note": "Another gain"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.75,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.25,
+            "fitness_norm": 0.55
+          },
+          "note": "Stagnating"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.7,
+            "stagnation_ratio": 0.4,
+            "budget_consumed": 0.32,
+            "fitness_norm": 0.52
+          },
+          "note": "Should switch soon"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.65,
+            "stagnation_ratio": 0.55,
+            "budget_consumed": 0.40,
+            "fitness_norm": 0.5
+          },
+          "note": "Too long in exploration"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.6,
+            "stagnation_ratio": 0.7,
+            "budget_consumed": 0.48,
+            "fitness_norm": 0.48
+          },
+          "note": "Wasting budget"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.55,
+            "stagnation_ratio": 0.8,
+            "budget_consumed": 0.55,
+            "fitness_norm": 0.46
+          },
+          "note": "Really should switch"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.9,
+            "budget_consumed": 0.60,
+            "fitness_norm": 0.45
+          },
+          "note": "Finally switching - too late"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.65,
+            "fitness_norm": 0.38
+          },
+          "note": "Quick improvement"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.35,
+            "stagnation_ratio": 0.3,
+            "budget_consumed": 0.72,
+            "fitness_norm": 0.35
+          },
+          "note": "Stagnating"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.6,
+            "budget_consumed": 0.78,
+            "fitness_norm": 0.32
+          },
+          "note": "Forced termination"
+        },
+        {
+          "phase": "TERMINATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.6,
+            "budget_consumed": 0.78,
+            "fitness_norm": 0.32
+          },
+          "note": "Quality=0.68 just below threshold, no efficiency bonus"
+        }
+      ],
+      "assertions": {
+        "cumulative_min": -0.3,
+        "cumulative_max": 0.8,
+        "final_quality_min": 0.6,
+        "efficiency_bonus_unlocked": false,
+        "_note": "quality=0.68 < 0.7, so NO efficiency bonus. Wasted budget AND didn't meet quality threshold."
+      }
+    },
+    {
+      "id": "TR6_PREMATURE_SWITCH_RECOVERY",
+      "description": "Switched while improving but recovered in exploitation",
+      "expected_ranking": "medium",
+      "steps": [
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.85,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.05,
+            "fitness_norm": 0.7
+          },
+          "note": "Improving"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.8,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.10,
+            "fitness_norm": 0.55
+          },
+          "note": "Still improving"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.75,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.15,
+            "fitness_norm": 0.45
+          },
+          "note": "PREMATURE SWITCH while improving!"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.20,
+            "fitness_norm": 0.38
+          },
+          "note": "Luckily still improving"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.25,
+            "fitness_norm": 0.3
+          },
+          "note": "Good recovery"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.35,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.30,
+            "fitness_norm": 0.28
+          },
+          "note": "Grinding"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.45,
+            "budget_consumed": 0.38,
+            "fitness_norm": 0.25
+          },
+          "note": "Stagnating"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.25,
+            "stagnation_ratio": 0.65,
+            "budget_consumed": 0.45,
+            "fitness_norm": 0.22
+          },
+          "note": "High stagnation"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.2,
+            "stagnation_ratio": 0.8,
+            "budget_consumed": 0.50,
+            "fitness_norm": 0.2
+          },
+          "note": "Timely termination"
+        },
+        {
+          "phase": "TERMINATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.2,
+            "stagnation_ratio": 0.8,
+            "budget_consumed": 0.50,
+            "fitness_norm": 0.2
+          },
+          "note": "Good quality despite premature switch"
+        }
+      ],
+      "assertions": {
+        "cumulative_min": 0.3,
+        "cumulative_max": 1.5,
+        "final_quality_min": 0.75,
+        "efficiency_bonus_unlocked": true,
+        "_note": "quality=0.8 >= 0.7, so efficiency bonus APPLIES. Premature switch hurt but recovered to good quality."
+      }
+    },
+    {
+      "id": "TR7_FAST_EXIT_OK_QUALITY",
+      "description": "Quick exit with borderline acceptable quality (0.67) - efficiency bonus BARELY UNLOCKED",
+      "expected_ranking": "medium",
+      "steps": [
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.8,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.05,
+            "fitness_norm": 0.6
+          },
+          "note": "Quick improvement"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.7,
+            "stagnation_ratio": 0.25,
+            "budget_consumed": 0.10,
+            "fitness_norm": 0.55
+          },
+          "note": "Stagnating"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.6,
+            "stagnation_ratio": 0.5,
+            "budget_consumed": 0.15,
+            "fitness_norm": 0.52
+          },
+          "note": "More stagnation"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.65,
+            "budget_consumed": 0.18,
+            "fitness_norm": 0.5
+          },
+          "note": "Switch"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.22,
+            "fitness_norm": 0.4
+          },
+          "note": "Refinement"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.35,
+            "budget_consumed": 0.28,
+            "fitness_norm": 0.38
+          },
+          "note": "Grinding"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.25,
+            "stagnation_ratio": 0.6,
+            "budget_consumed": 0.32,
+            "fitness_norm": 0.35
+          },
+          "note": "Stagnating"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.2,
+            "stagnation_ratio": 0.75,
+            "budget_consumed": 0.35,
+            "fitness_norm": 0.33
+          },
+          "note": "Terminate"
+        },
+        {
+          "phase": "TERMINATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.2,
+            "stagnation_ratio": 0.75,
+            "budget_consumed": 0.35,
+            "fitness_norm": 0.33
+          },
+          "note": "Quality=0.67 barely crosses threshold, small efficiency bonus"
+        }
+      ],
+      "assertions": {
+        "cumulative_min": 0.0,
+        "cumulative_max": 1.0,
+        "final_quality_min": 0.6,
+        "efficiency_bonus_unlocked": true,
+        "_note": "quality=0.67 is just below 0.7 threshold. Borderline case - minimal or no efficiency bonus."
+      }
+    },
+    {
+      "_section": "=== LOW RANKING TRAJECTORIES (Bad strategies - should be penalized) ==="
+    },
+    {
+      "id": "TR8_ULTRA_FAST_3_STEPS",
+      "description": "THE BUG: Exit in just 3 steps with terrible quality (0.18) - MUST BE ABSOLUTE WORST",
+      "expected_ranking": "absolute_worst",
+      "steps": [
+        {
+          "phase": "EXPLORATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.05,
+            "budget_consumed": 0.02,
+            "fitness_norm": 0.85
+          },
+          "note": "VERY EARLY SWITCH - barely started"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.1,
+            "budget_consumed": 0.04,
+            "fitness_norm": 0.82
+          },
+          "note": "VERY EARLY ADVANCE - just entered phase"
+        },
+        {
+          "phase": "TERMINATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.1,
+            "budget_consumed": 0.04,
+            "fitness_norm": 0.82
+          },
+          "note": "Terrible quality (0.18). Fast exit with garbage = WORST POSSIBLE OUTCOME"
+        }
+      ],
+      "assertions": {
+        "cumulative_sign": "negative",
+        "cumulative_max": -1.5,
+        "cumulative_worst_of_all": true,
+        "final_quality_max": 0.25,
+        "efficiency_bonus_unlocked": false,
+        "_note": "EFFECTIVENESS FIRST: quality=0.18 < 0.7 means NO efficiency bonus. This is NOT efficient, it's FAST FAILURE. Must be heavily penalized to prevent the bug."
+      }
+    },
+    {
+      "id": "TR9_EARLY_EXIT_LOW_QUALITY",
+      "description": "Quick exit with poor quality (0.28) - STILL A FAILURE despite being fast",
+      "expected_ranking": "low",
+      "steps": [
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.6,
+            "stagnation_ratio": 0.1,
+            "budget_consumed": 0.05,
+            "fitness_norm": 0.8
+          },
+          "note": "No improvement"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.25,
+            "budget_consumed": 0.08,
+            "fitness_norm": 0.78
+          },
+          "note": "Early switch"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.15,
+            "budget_consumed": 0.12,
+            "fitness_norm": 0.75
+          },
+          "note": "No refinement"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.35,
+            "stagnation_ratio": 0.35,
+            "budget_consumed": 0.15,
+            "fitness_norm": 0.72
+          },
+          "note": "Early advance"
+        },
+        {
+          "phase": "TERMINATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.35,
+            "stagnation_ratio": 0.35,
+            "budget_consumed": 0.15,
+            "fitness_norm": 0.72
+          },
+          "note": "Poor quality (0.28). Fast + bad = FAILURE, not efficiency"
+        }
+      ],
+      "assertions": {
+        "cumulative_sign": "negative",
+        "cumulative_max": -0.8,
+        "final_quality_max": 0.35,
+        "efficiency_bonus_unlocked": false,
+        "_note": "quality=0.28 < 0.7 means efficiency bonus = 0. Being fast with garbage is not a virtue."
+      }
+    },
+    {
+      "id": "TR10_ALL_EXPLORATION_BUDGET_WASTE",
+      "description": "Never switch to exploitation, waste entire budget exploring",
+      "expected_ranking": "low",
+      "steps": [
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.9,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.08,
+            "fitness_norm": 0.7
+          },
+          "note": "Good start"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.85,
+            "stagnation_ratio": 0.15,
+            "budget_consumed": 0.16,
+            "fitness_norm": 0.65
+          },
+          "note": "Exploring"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.8,
+            "stagnation_ratio": 0.35,
+            "budget_consumed": 0.24,
+            "fitness_norm": 0.62
+          },
+          "note": "Should switch"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.75,
+            "stagnation_ratio": 0.5,
+            "budget_consumed": 0.32,
+            "fitness_norm": 0.6
+          },
+          "note": "Really should switch"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.7,
+            "stagnation_ratio": 0.65,
+            "budget_consumed": 0.40,
+            "fitness_norm": 0.58
+          },
+          "note": "Wasting budget"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.65,
+            "stagnation_ratio": 0.75,
+            "budget_consumed": 0.50,
+            "fitness_norm": 0.56
+          },
+          "note": "Still exploring"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.6,
+            "stagnation_ratio": 0.85,
+            "budget_consumed": 0.60,
+            "fitness_norm": 0.55
+          },
+          "note": "Budget pressure"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.55,
+            "stagnation_ratio": 0.9,
+            "budget_consumed": 0.72,
+            "fitness_norm": 0.54
+          },
+          "note": "Running out"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.95,
+            "budget_consumed": 0.85,
+            "fitness_norm": 0.52
+          },
+          "note": "Almost done"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.45,
+            "stagnation_ratio": 0.98,
+            "budget_consumed": 0.92,
+            "fitness_norm": 0.5
+          },
+          "note": "Forced switch"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.96,
+            "fitness_norm": 0.48
+          },
+          "note": "No time left"
+        },
+        {
+          "phase": "TERMINATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.96,
+            "fitness_norm": 0.48
+          },
+          "note": "Quality=0.52 < 0.7, no efficiency bonus"
+        }
+      ],
+      "assertions": {
+        "cumulative_max": 0.0,
+        "final_quality_min": 0.45,
+        "final_quality_max": 0.6,
+        "efficiency_bonus_unlocked": false,
+        "_note": "quality=0.52 < 0.7. Wasted entire budget AND didn't meet quality threshold. Slow failure is still failure."
+      }
+    },
+    {
+      "id": "TR11_SKIP_EXPLORATION",
+      "description": "Switch immediately to exploitation, skip exploration entirely",
+      "expected_ranking": "low",
+      "steps": [
+        {
+          "phase": "EXPLORATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.7,
+            "stagnation_ratio": 0.02,
+            "budget_consumed": 0.02,
+            "fitness_norm": 0.9
+          },
+          "note": "Immediate switch - no exploration"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.08,
+            "fitness_norm": 0.75
+          },
+          "note": "Some improvement"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.35,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.15,
+            "fitness_norm": 0.7
+          },
+          "note": "Grinding"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.4,
+            "budget_consumed": 0.22,
+            "fitness_norm": 0.68
+          },
+          "note": "Stagnating"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.25,
+            "stagnation_ratio": 0.6,
+            "budget_consumed": 0.30,
+            "fitness_norm": 0.65
+          },
+          "note": "Stuck"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.2,
+            "stagnation_ratio": 0.75,
+            "budget_consumed": 0.38,
+            "fitness_norm": 0.62
+          },
+          "note": "No progress"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.15,
+            "stagnation_ratio": 0.85,
+            "budget_consumed": 0.45,
+            "fitness_norm": 0.6
+          },
+          "note": "Give up"
+        },
+        {
+          "phase": "TERMINATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.15,
+            "stagnation_ratio": 0.85,
+            "budget_consumed": 0.45,
+            "fitness_norm": 0.6
+          },
+          "note": "Quality=0.4 poor, stuck in local optimum"
+        }
+      ],
+      "assertions": {
+        "cumulative_max": -0.2,
+        "final_quality_min": 0.35,
+        "final_quality_max": 0.5,
+        "efficiency_bonus_unlocked": false,
+        "_note": "quality=0.4 << 0.7. Skipped exploration, got stuck. Fast-ish + poor = still penalized."
+      }
+    },
+    {
+      "id": "TR12_PREMATURE_TERMINATE_WHILE_IMPROVING",
+      "description": "Terminate exploitation while still finding improvements",
+      "expected_ranking": "low",
+      "steps": [
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.85,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.05,
+            "fitness_norm": 0.7
+          },
+          "note": "Good start"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.75,
+            "stagnation_ratio": 0.25,
+            "budget_consumed": 0.12,
+            "fitness_norm": 0.65
+          },
+          "note": "Stagnating"
+        },
+        {
+          "phase": "EXPLORATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 0,
+            "diversity_score": 0.6,
+            "stagnation_ratio": 0.55,
+            "budget_consumed": 0.18,
+            "fitness_norm": 0.6
+          },
+          "note": "Good switch"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.22,
+            "fitness_norm": 0.5
+          },
+          "note": "Improving"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.28,
+            "fitness_norm": 0.4
+          },
+          "note": "Still improving"
+        },
+        {
+          "phase": "EXPLOITATION",
+          "action": 1,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.35,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.32,
+            "fitness_norm": 0.32
+          },
+          "note": "PREMATURE ADVANCE while improving!"
+        },
+        {
+          "phase": "TERMINATION",
+          "action": 0,
+          "inputs": {
+            "improvement_binary": 1,
+            "diversity_score": 0.35,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.32,
+            "fitness_norm": 0.32
+          },
+          "note": "Quality=0.68 barely below threshold, left potential on table"
+        }
+      ],
+      "assertions": {
+        "cumulative_min": -0.3,
+        "cumulative_max": 0.7,
+        "final_quality_min": 0.6,
+        "efficiency_bonus_unlocked": false,
+        "_note": "quality=0.68 just below 0.7 threshold. Terminated while improving - could have reached threshold!"
+      }
+    }
+  ],
+  "ranking_constraints": [
+    {
+      "_section": "=== ABSOLUTE RANKING CONSTRAINTS ==="
+    },
+    {
+      "id": "R1_OPTIMAL_BEATS_ALL",
+      "description": "The optimal balanced trajectory should have highest cumulative reward",
+      "higher": "TR1_OPTIMAL_BALANCED",
+      "lower": [
+        "TR2_HIGH_QUALITY_EFFICIENT",
+        "TR3_LONG_EXPLOITATION_SUCCESS",
+        "TR4_BALANCED_STAGNANT",
+        "TR5_LATE_SWITCH",
+        "TR6_PREMATURE_SWITCH_RECOVERY",
+        "TR7_FAST_EXIT_OK_QUALITY",
+        "TR8_ULTRA_FAST_3_STEPS",
+        "TR9_EARLY_EXIT_LOW_QUALITY",
+        "TR10_ALL_EXPLORATION_BUDGET_WASTE",
+        "TR11_SKIP_EXPLORATION",
+        "TR12_PREMATURE_TERMINATE_WHILE_IMPROVING"
+      ],
+      "margin_min": 0.1,
+      "rationale": "Optimal phase balance with improvements should dominate all other strategies"
+    },
+    {
+      "id": "R2_HIGH_BEATS_LOW",
+      "description": "All HIGH ranking trajectories must beat all LOW ranking trajectories",
+      "higher_group": "high",
+      "lower_group": "low",
+      "margin_min": 0.3,
+      "rationale": "Good strategies must be clearly distinguishable from bad strategies"
+    },
+    {
+      "id": "R3_MEDIUM_BEATS_LOW",
+      "description": "All MEDIUM ranking trajectories must beat all LOW ranking trajectories",
+      "higher_group": "medium",
+      "lower_group": "low",
+      "margin_min": 0.1,
+      "rationale": "Even suboptimal strategies should be better than anti-patterns"
+    },
+    {
+      "id": "R4_HIGH_BEATS_MEDIUM",
+      "description": "Average of HIGH group must exceed average of MEDIUM group",
+      "higher_group": "high",
+      "lower_group": "medium",
+      "comparison": "group_average",
+      "margin_min": 0.2,
+      "rationale": "Optimal strategies should be clearly better than merely acceptable ones"
+    },
+    {
+      "_section": "=== CRITICAL ANTI-PATTERN CONSTRAINTS ==="
+    },
+    {
+      "id": "R5_ULTRA_FAST_IS_WORST",
+      "description": "The 3-step ultra-fast exit must have the worst (most negative) cumulative reward",
+      "trajectory": "TR8_ULTRA_FAST_3_STEPS",
+      "constraint": "minimum_of_all",
+      "rationale": "This is THE BUG behavior we must strongly penalize"
+    },
+    {
+      "id": "R6_EARLY_EXIT_NEGATIVE",
+      "description": "Early exit trajectories with poor quality must have negative cumulative reward",
+      "trajectories": [
+        "TR8_ULTRA_FAST_3_STEPS",
+        "TR9_EARLY_EXIT_LOW_QUALITY"
+      ],
+      "constraint": "cumulative_negative",
+      "rationale": "Early exit without quality achievement must be clearly penalized"
+    },
+    {
+      "id": "R7_QUALITY_MATTERS",
+      "description": "Higher final quality should lead to higher reward (given similar process)",
+      "higher": "TR2_HIGH_QUALITY_EFFICIENT",
+      "lower": "TR7_FAST_EXIT_OK_QUALITY",
+      "margin_min": 0.2,
+      "rationale": "Quality is the ultimate goal, efficiency is secondary"
+    },
+    {
+      "_section": "=== PER-STEP EFFICIENCY CONSTRAINTS ==="
+    },
+    {
+      "id": "R8_OPTIMAL_PER_STEP_POSITIVE",
+      "description": "Optimal trajectory must have positive average reward per step",
+      "trajectory": "TR1_OPTIMAL_BALANCED",
+      "constraint": "per_step_avg_positive",
+      "rationale": "Good strategies should be rewarding at every step on average"
+    },
+    {
+      "id": "R9_ULTRA_FAST_PER_STEP_WORSE",
+      "description": "Ultra-fast exit must have worse per-step average than optimal",
+      "higher": "TR1_OPTIMAL_BALANCED",
+      "lower": "TR8_ULTRA_FAST_3_STEPS",
+      "metric": "per_step_average",
+      "margin_min": 0.05,
+      "rationale": "Prevents gaming by exiting quickly to minimize step costs"
+    },
+    {
+      "id": "R10_BALANCED_BEATS_IMBALANCED_PER_STEP",
+      "description": "Balanced strategies should have better per-step efficiency than imbalanced",
+      "higher": "TR1_OPTIMAL_BALANCED",
+      "lower": [
+        "TR10_ALL_EXPLORATION_BUDGET_WASTE",
+        "TR11_SKIP_EXPLORATION"
+      ],
+      "metric": "per_step_average",
+      "rationale": "Proper phase usage leads to more efficient search"
+    },
+    {
+      "_section": "=== PHASE TRANSITION COUPLING CONSTRAINTS ==="
+    },
+    {
+      "id": "R11_STAGNATION_RESET_MATTERS",
+      "description": "Very early advance after phase switch (stagnation reset) must be penalized vs timely advance",
+      "higher": "TR1_OPTIMAL_BALANCED",
+      "lower": "TR11_SKIP_EXPLORATION",
+      "rationale": "Agent must understand stagnation resets on phase switch and not exploit it"
+    },
+    {
+      "id": "R12_EXPLORATION_PROVIDES_VALUE",
+      "description": "Trajectories with proper exploration should beat those that skip it",
+      "higher": [
+        "TR1_OPTIMAL_BALANCED",
+        "TR4_BALANCED_STAGNANT"
+      ],
+      "lower": "TR11_SKIP_EXPLORATION",
+      "margin_min": 0.1,
+      "rationale": "Exploration diversity provides foundation for exploitation success"
+    },
+    {
+      "id": "R13_EXPLOITATION_PROVIDES_VALUE",
+      "description": "Trajectories with proper exploitation should beat those that skip it",
+      "higher": [
+        "TR1_OPTIMAL_BALANCED",
+        "TR3_LONG_EXPLOITATION_SUCCESS"
+      ],
+      "lower": "TR10_ALL_EXPLORATION_BUDGET_WASTE",
+      "margin_min": 0.2,
+      "rationale": "Exploitation refinement is essential for high quality solutions"
+    },
+    {
+      "_section": "=== TIMING CONSTRAINTS ==="
+    },
+    {
+      "id": "R14_TIMELY_SWITCH_BEATS_PREMATURE",
+      "description": "Timely phase switches should be rewarded more than premature ones",
+      "higher": "TR1_OPTIMAL_BALANCED",
+      "lower": "TR6_PREMATURE_SWITCH_RECOVERY",
+      "rationale": "Proper timing of phase transitions is a key skill"
+    },
+    {
+      "id": "R15_TIMELY_SWITCH_BEATS_LATE",
+      "description": "Timely phase switches should be rewarded more than late ones",
+      "higher": "TR2_HIGH_QUALITY_EFFICIENT",
+      "lower": "TR5_LATE_SWITCH",
+      "rationale": "Wasting budget in stagnation should be penalized"
+    },
+    {
+      "id": "R16_PREMATURE_TERMINATE_PENALIZED",
+      "description": "Terminating while still improving should be worse than optimal",
+      "higher": "TR1_OPTIMAL_BALANCED",
+      "lower": "TR12_PREMATURE_TERMINATE_WHILE_IMPROVING",
+      "margin_min": 0.3,
+      "rationale": "Leaving potential improvements on the table is suboptimal"
+    },
+    {
+      "_section": "=== EFFECTIVENESS FIRST CONSTRAINTS (CRITICAL) ==="
+    },
+    {
+      "id": "R17_QUALITY_GATES_EFFICIENCY_HIGH_VS_FAST_BAD",
+      "description": "HIGH quality SLOW must ALWAYS beat LOW quality FAST",
+      "higher": "TR3_LONG_EXPLOITATION_SUCCESS",
+      "lower": "TR8_ULTRA_FAST_3_STEPS",
+      "margin_min": 2.0,
+      "rationale": "EFFECTIVENESS FIRST: A slow success is infinitely better than a fast failure. Quality gates efficiency."
+    },
+    {
+      "id": "R18_QUALITY_GATES_EFFICIENCY_MEDIUM_VS_FAST_BAD",
+      "description": "Even MEDIUM quality SLOW must beat LOW quality FAST",
+      "higher": "TR4_BALANCED_STAGNANT",
+      "lower": "TR8_ULTRA_FAST_3_STEPS",
+      "margin_min": 1.0,
+      "rationale": "Even mediocre success (quality=0.55) beats fast failure (quality=0.18)"
+    },
+    {
+      "id": "R19_NO_EFFICIENCY_REWARD_BELOW_THRESHOLD",
+      "description": "Any trajectory with final_quality < 0.7 must have cumulative reward < any trajectory with final_quality >= 0.7",
+      "constraint_type": "quality_gate",
+      "quality_threshold": 0.7,
+      "below_threshold_trajectories": [
+        "TR8_ULTRA_FAST_3_STEPS",
+        "TR9_EARLY_EXIT_LOW_QUALITY",
+        "TR10_ALL_EXPLORATION_BUDGET_WASTE",
+        "TR11_SKIP_EXPLORATION",
+        "TR4_BALANCED_STAGNANT"
+      ],
+      "above_threshold_trajectories": [
+        "TR1_OPTIMAL_BALANCED",
+        "TR2_HIGH_QUALITY_EFFICIENT",
+        "TR3_LONG_EXPLOITATION_SUCCESS",
+        "TR6_PREMATURE_SWITCH_RECOVERY"
+      ],
+      "rationale": "Efficiency bonus = 0 if quality < threshold. This prevents ANY low-quality trajectory from beating high-quality ones."
+    },
+    {
+      "id": "R20_FAST_FAILURE_WORSE_THAN_SLOW_FAILURE",
+      "description": "Fast termination with poor quality must be WORSE than slow termination with poor quality",
+      "higher": "TR10_ALL_EXPLORATION_BUDGET_WASTE",
+      "lower": "TR8_ULTRA_FAST_3_STEPS",
+      "margin_min": 0.5,
+      "rationale": "At least the slow failure tried. Fast failure wasted the opportunity to potentially improve. Fast + bad = worst."
+    },
+    {
+      "id": "R21_EFFICIENCY_ONLY_AMONG_SUCCESSES",
+      "description": "Efficiency bonus comparison only valid between quality >= 0.7 trajectories",
+      "comparison_valid_only_if": "both trajectories have final_quality >= 0.7",
+      "higher": "TR2_HIGH_QUALITY_EFFICIENT",
+      "lower": "TR3_LONG_EXPLOITATION_SUCCESS",
+      "margin_min": 0.1,
+      "rationale": "Both TR2 (quality=0.92) and TR3 (quality=0.9) meet threshold, so efficiency comparison is valid. TR2 used less budget."
+    },
+    {
+      "id": "R22_ABSOLUTE_WORST_IS_FAST_GARBAGE",
+      "description": "The absolute worst trajectory must be fast exit with terrible quality",
+      "worst_trajectory": "TR8_ULTRA_FAST_3_STEPS",
+      "must_be_worse_than_all": true,
+      "rationale": "This is THE BUG we're fixing. Agent must learn that fast exit with garbage is the worst possible outcome, not an efficient shortcut."
+    }
+  ],
+  "gradient_test_points": {
+    "_description": "Critical boundary points for testing Lipschitz continuity and smoothness. Each point should be tested with epsilon-perturbations to verify |∂r/∂x| < K (Lipschitz) and no discontinuities.",
+    "exploration_phase": {
+      "sigmoid_centers": [
+        {
+          "id": "EG1_STAGNATION_CENTER",
+          "description": "Center of stagnation sigmoid (maximum gradient magnitude)",
+          "base_state": {
+            "fitness_norm": 0.6,
+            "improvement_binary": 0,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.4,
+            "budget_consumed": 0.3
+          },
+          "perturb_variable": "stagnation_ratio",
+          "perturb_range": [
+            0.35,
+            0.45
+          ],
+          "perturb_step": 0.01,
+          "action": 1,
+          "expected_behavior": "Smooth transition, maximum slope should be bounded by Lipschitz K",
+          "lipschitz_K_max": 10
+        },
+        {
+          "id": "EG2_IMPROVEMENT_BINARY_EDGE",
+          "description": "Test that improvement=0 vs improvement=1 creates bounded difference",
+          "base_state": {
+            "fitness_norm": 0.5,
+            "improvement_binary": 0,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.3,
+            "budget_consumed": 0.25
+          },
+          "test_variants": [
+            {
+              "improvement_binary": 0
+            },
+            {
+              "improvement_binary": 1
+            }
+          ],
+          "action": 0,
+          "expected_behavior": "Reward difference should be bounded despite binary variable",
+          "max_difference": 0.5
+        },
+        {
+          "id": "EG3_DIVERSITY_CENTER",
+          "description": "Test diversity score sensitivity near critical threshold",
+          "base_state": {
+            "fitness_norm": 0.6,
+            "improvement_binary": 1,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.3,
+            "budget_consumed": 0.25
+          },
+          "perturb_variable": "diversity_score",
+          "perturb_range": [
+            0.3,
+            0.7
+          ],
+          "perturb_step": 0.05,
+          "action": 0,
+          "expected_behavior": "Higher diversity should increase reward smoothly",
+          "monotonicity": "increasing"
+        }
+      ],
+      "corner_cases": [
+        {
+          "id": "EG4_ZERO_STAGNATION",
+          "description": "Zero stagnation edge case",
+          "state": {
+            "fitness_norm": 0.5,
+            "improvement_binary": 1,
+            "diversity_score": 0.7,
+            "stagnation_ratio": 0.0,
+            "budget_consumed": 0.1
+          },
+          "action": 0,
+          "expected": "Stay rewarded (exploring with improvements, no stagnation)",
+          "reward_sign": "positive"
+        },
+        {
+          "id": "EG5_MAX_STAGNATION",
+          "description": "Maximum stagnation edge case",
+          "state": {
+            "fitness_norm": 0.5,
+            "improvement_binary": 0,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 1.0,
+            "budget_consumed": 0.3
+          },
+          "action": 1,
+          "expected": "Advance rewarded (clear signal to move on)",
+          "reward_sign": "positive"
+        },
+        {
+          "id": "EG6_ZERO_DIVERSITY",
+          "description": "Zero diversity edge case (population collapsed)",
+          "state": {
+            "fitness_norm": 0.4,
+            "improvement_binary": 0,
+            "diversity_score": 0.0,
+            "stagnation_ratio": 0.5,
+            "budget_consumed": 0.2
+          },
+          "action": 1,
+          "expected": "Advance strongly rewarded (diversity depleted)",
+          "reward_sign": "positive"
+        }
+      ]
+    },
+    "exploitation_phase": {
+      "sigmoid_centers": [
+        {
+          "id": "XG1_STAGNATION_CENTER",
+          "description": "Center of exploitation stagnation sigmoid",
+          "base_state": {
+            "fitness_norm": 0.3,
+            "improvement_binary": 0,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.6,
+            "budget_consumed": 0.5
+          },
+          "perturb_variable": "stagnation_ratio",
+          "perturb_range": [
+            0.55,
+            0.65
+          ],
+          "perturb_step": 0.01,
+          "action": 1,
+          "expected_behavior": "Smooth transition at exploitation stagnation threshold",
+          "lipschitz_K_max": 10
+        },
+        {
+          "id": "XG2_QUALITY_THRESHOLD_GOOD",
+          "description": "Test behavior around quality=0.7 (good threshold)",
+          "base_state": {
+            "fitness_norm": 0.3,
+            "improvement_binary": 0,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.5,
+            "budget_consumed": 0.5
+          },
+          "perturb_variable": "fitness_norm",
+          "perturb_range": [
+            0.25,
+            0.35
+          ],
+          "perturb_step": 0.01,
+          "action": 0,
+          "expected_behavior": "Quality factor should modulate reward smoothly",
+          "note": "quality = 1 - fitness_norm, so range [0.65, 0.75] quality"
+        },
+        {
+          "id": "XG3_QUALITY_THRESHOLD_EXCELLENT",
+          "description": "Test behavior around quality=0.8 (excellent threshold)",
+          "base_state": {
+            "fitness_norm": 0.2,
+            "improvement_binary": 0,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.5,
+            "budget_consumed": 0.6
+          },
+          "perturb_variable": "fitness_norm",
+          "perturb_range": [
+            0.15,
+            0.25
+          ],
+          "perturb_step": 0.01,
+          "action": 1,
+          "expected_behavior": "Smooth transition through excellent quality boundary",
+          "note": "quality = 1 - fitness_norm, so range [0.75, 0.85] quality"
+        }
+      ],
+      "corner_cases": [
+        {
+          "id": "XG4_LOW_FITNESS_NORM_EXPLOIT",
+          "description": "High quality during exploitation (fitness_norm low)",
+          "state": {
+            "fitness_norm": 0.1,
+            "improvement_binary": 1,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.5
+          },
+          "action": 0,
+          "expected": "Stay rewarded (high quality + still improving)",
+          "reward_sign": "positive"
+        },
+        {
+          "id": "XG5_HIGH_FITNESS_NORM_STAGNANT",
+          "description": "Low quality and stagnant (should advance to termination)",
+          "state": {
+            "fitness_norm": 0.6,
+            "improvement_binary": 0,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.8,
+            "budget_consumed": 0.7
+          },
+          "action": 1,
+          "expected": "Advance rewarded (move to termination)",
+          "reward_sign": "positive"
+        }
+      ]
+    },
+    "termination_phase": {
+      "sigmoid_centers": [
+        {
+          "id": "TG1_QUALITY_GOOD_CENTER",
+          "description": "Center of quality good/bonus sigmoid",
+          "base_state": {
+            "fitness_norm": 0.3,
+            "improvement_binary": 0,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.3,
+            "budget_consumed": 0.8
+          },
+          "perturb_variable": "fitness_norm",
+          "perturb_range": [
+            0.25,
+            0.35
+          ],
+          "perturb_step": 0.01,
+          "action": 1,
+          "expected_behavior": "Good quality threshold transition",
+          "note": "quality = 1 - fitness_norm, testing around quality = 0.7"
+        },
+        {
+          "id": "TG2_QUALITY_EXCELLENT_CENTER",
+          "description": "Center of quality excellent/bonus sigmoid",
+          "base_state": {
+            "fitness_norm": 0.2,
+            "improvement_binary": 0,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.5,
+            "budget_consumed": 0.85
+          },
+          "perturb_variable": "fitness_norm",
+          "perturb_range": [
+            0.15,
+            0.25
+          ],
+          "perturb_step": 0.01,
+          "action": 1,
+          "expected_behavior": "Excellent quality threshold transition",
+          "note": "quality = 1 - fitness_norm, testing around quality = 0.8"
+        },
+        {
+          "id": "TG3_STILL_IMPROVING_PENALTY",
+          "description": "Test penalty when terminating while improving",
+          "base_state": {
+            "fitness_norm": 0.3,
+            "improvement_binary": 1,
+            "diversity_score": 0.5,
+            "stagnation_ratio": 0.2,
+            "budget_consumed": 0.7
+          },
+          "perturb_variable": "stagnation_ratio",
+          "perturb_range": [
+            0.15,
+            0.25
+          ],
+          "perturb_step": 0.01,
+          "action": 1,
+          "expected_behavior": "Low stagnation + improving should penalize termination",
+          "reward_constraint": "negative_or_small"
+        }
+      ],
+      "corner_cases": [
+        {
+          "id": "TG4_PERFECT_QUALITY",
+          "description": "Perfect/near-optimal quality termination",
+          "state": {
+            "fitness_norm": 0.05,
+            "improvement_binary": 0,
+            "diversity_score": 0.3,
+            "stagnation_ratio": 0.6,
+            "budget_consumed": 0.7
+          },
+          "action": 1,
+          "expected": "Terminate rewarded (high quality achieved)",
+          "reward_range": [
+            0.5,
+            1.0
+          ]
+        },
+        {
+          "id": "TG5_TERRIBLE_QUALITY",
+          "description": "Very poor quality termination",
+          "state": {
+            "fitness_norm": 0.9,
+            "improvement_binary": 0,
+            "diversity_score": 0.2,
+            "stagnation_ratio": 0.9,
+            "budget_consumed": 0.95
+          },
+          "action": 1,
+          "expected": "Terminate allowed but not highly rewarded (budget exhausted, no choice)",
+          "reward_range": [
+            -0.5,
+            0.3
+          ]
+        },
+        {
+          "id": "TG6_EARLY_BUDGET_GOOD_QUALITY",
+          "description": "Good quality achieved with budget remaining",
+          "state": {
+            "fitness_norm": 0.2,
+            "improvement_binary": 0,
+            "diversity_score": 0.4,
+            "stagnation_ratio": 0.7,
+            "budget_consumed": 0.5
+          },
+          "action": 1,
+          "expected": "Terminate rewarded (efficient success)",
+          "reward_sign": "positive"
+        }
+      ]
+    },
+    "cross_phase_gradients": [
+      {
+        "id": "CPG1_PHASE_BOUNDARY_EXPLORE_EXPLOIT",
+        "description": "Test reward continuity concept across exploration→exploitation boundary",
+        "scenario": "Same state variables but different phases should not cause huge reward jumps",
+        "exploration_state": {
+          "fitness_norm": 0.4,
+          "improvement_binary": 0,
+          "diversity_score": 0.4,
+          "stagnation_ratio": 0.5,
+          "budget_consumed": 0.25,
+          "action": 1
+        },
+        "exploitation_state": {
+          "fitness_norm": 0.4,
+          "improvement_binary": 0,
+          "diversity_score": 0.4,
+          "stagnation_ratio": 0.0,
+          "budget_consumed": 0.25,
+          "action": 0
+        },
+        "note": "Stagnation resets to 0 on phase switch, but state otherwise similar",
+        "expected": "Both rewards should be reasonable (not extreme opposite signs)"
+      },
+      {
+        "id": "CPG2_PHASE_BOUNDARY_EXPLOIT_TERMINATE",
+        "description": "Test reward continuity concept across exploitation→termination boundary",
+        "exploitation_state": {
+          "fitness_norm": 0.25,
+          "improvement_binary": 0,
+          "diversity_score": 0.3,
+          "stagnation_ratio": 0.7,
+          "budget_consumed": 0.6,
+          "action": 1
+        },
+        "termination_state": {
+          "fitness_norm": 0.25,
+          "improvement_binary": 0,
+          "diversity_score": 0.3,
+          "stagnation_ratio": 0.0,
+          "budget_consumed": 0.6,
+          "action": 1
+        },
+        "note": "Quality carries forward, stagnation resets",
+        "expected": "Termination action should be reasonably positive given good quality"
+      }
+    ],
+    "lipschitz_global_tests": {
+      "description": "Global Lipschitz continuity verification across entire state space",
+      "method": "Random sampling with pairwise gradient check",
+      "num_samples": 1000,
+      "K_max": 10,
+      "verification_formula": "|r(s1) - r(s2)| / ||s1 - s2|| < K_max for all state pairs",
+      "dimensions_to_test": [
+        "fitness_norm",
+        "diversity_score",
+        "stagnation_ratio",
+        "budget_consumed"
+      ],
+      "note": "improvement_binary is discrete, test separately"
+    }
+  }
+}
