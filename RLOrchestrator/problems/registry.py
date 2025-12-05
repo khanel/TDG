@@ -153,16 +153,32 @@ def _ensure_builtin_definitions():
 def _register_builtin_definitions():
     from ..tsp.adapter import TSPAdapter
     from ..tsp.solvers import (
-        TSPArtificialBeeColony,
-        TSPGravitationalSearch,
-        TSPHarrisHawks,
-        TSPLSHADE,
+        # Explorer variants (11 total)
         TSPMapElitesExplorer,
-        TSPMarinePredators,
-        TSPMemeticAlgorithm,
+        TSPGAExplorer,
+        TSPPSOExplorer,
+        TSPGWOExplorer,
+        TSPABCExplorer,
+        TSPWOAExplorer,
+        TSPHHOExplorer,
+        TSPMPAExplorer,
+        TSPSMAExplorer,
+        TSPGSAExplorer,
+        TSPDiversityExplorer,
+        # Exploiter variants (13 total)
+        TSP2OptExploiter,
+        TSPGAExploiter,
         TSPPSOExploiter,
-        TSPSlimeMould,
-        TSPWhaleOptimization,
+        TSPGWOExploiter,
+        TSPABCExploiter,
+        TSPWOAExploiter,
+        TSPHHOExploiter,
+        TSPMPAExploiter,
+        TSPSMAExploiter,
+        TSPGSAExploiter,
+        TSPHillClimbingExploiter,
+        TSPMemeticExploiter,
+        TSPLSHADEExploiter,
     )
     from ..maxcut.adapter import MaxCutAdapter
     from ..maxcut.solvers import (
@@ -222,23 +238,35 @@ def _register_builtin_definitions():
         NKLABCExploiter,
     )
 
+    # TSP: Full 11x13 explorer/exploiter pool for solver-agnostic training
     tsp_explorers = [
-        SolverFactory(TSPMapElitesExplorer, {"population_size": 64}),
-        SolverFactory(TSPArtificialBeeColony, {"population_size": 96, "random_injection_rate": 0.25, "limit_factor": 1.2}),
-        SolverFactory(TSPGravitationalSearch, {"population_size": 64}),
-        SolverFactory(TSPHarrisHawks, {"population_size": 48, "max_iterations": 800}),
-        SolverFactory(TSPMarinePredators, {"population_size": 56, "fad_probability": 0.3}),
-        SolverFactory(TSPSlimeMould, {"population_size": 60}),
-        SolverFactory(TSPWhaleOptimization, {"population_size": 40, "b": 1.3}),
+        SolverFactory(TSPMapElitesExplorer, {"population_size": 64, "n_bins": 10, "mutation_rate": 0.3}),
+        SolverFactory(TSPGAExplorer, {"population_size": 64, "mutation_rate": 0.4, "random_injection": 0.1}),
+        SolverFactory(TSPPSOExplorer, {"population_size": 56, "cognitive": 0.7, "social": 0.3, "random_moves": 3}),
+        SolverFactory(TSPGWOExplorer, {"population_size": 48, "a_decay": 0.5, "random_weight": 0.4}),
+        SolverFactory(TSPABCExplorer, {"population_size": 72, "limit": 5, "scout_rate": 0.2}),
+        SolverFactory(TSPWOAExplorer, {"population_size": 48, "b": 1.0, "a_decay": 0.5}),
+        SolverFactory(TSPHHOExplorer, {"population_size": 56, "energy_decay": 0.5}),
+        SolverFactory(TSPMPAExplorer, {"population_size": 60, "FADs": 0.3}),
+        SolverFactory(TSPSMAExplorer, {"population_size": 64, "z": 0.03}),
+        SolverFactory(TSPGSAExplorer, {"population_size": 56, "G0": 50.0, "alpha": 10.0}),
+        SolverFactory(TSPDiversityExplorer, {"population_size": 48, "sigma": 0.3, "alpha": 1.0}),
     ]
 
     tsp_exploiters = [
-        SolverFactory(TSPPSOExploiter, {"population_size": 48}),
-        SolverFactory(TSPMemeticAlgorithm, {"population_size": 40, "mutation_rate": 0.25, "local_search_steps": 4}),
-        SolverFactory(TSPLSHADE, {"population_size": 60}),
-        SolverFactory(TSPArtificialBeeColony, {"population_size": 64, "random_injection_rate": 0.05, "perturbation_scale": 0.25, "limit_factor": 0.8}),
-        SolverFactory(TSPHarrisHawks, {"population_size": 40, "max_iterations": 600}),
-        SolverFactory(TSPWhaleOptimization, {"population_size": 36, "b": 0.8}),
+        SolverFactory(TSP2OptExploiter, {"population_size": 48, "elite_ratio": 0.4, "local_search_iter": 30}),
+        SolverFactory(TSPGAExploiter, {"population_size": 56, "mutation_rate": 0.1, "elite_ratio": 0.3}),
+        SolverFactory(TSPPSOExploiter, {"population_size": 48, "cognitive": 0.3, "social": 0.7, "local_search_iter": 10}),
+        SolverFactory(TSPGWOExploiter, {"population_size": 40, "a_decay": 2.0}),
+        SolverFactory(TSPABCExploiter, {"population_size": 60, "limit": 20, "local_search_iter": 15}),
+        SolverFactory(TSPWOAExploiter, {"population_size": 36, "b": 1.0}),
+        SolverFactory(TSPHHOExploiter, {"population_size": 40}),
+        SolverFactory(TSPMPAExploiter, {"population_size": 48}),
+        SolverFactory(TSPSMAExploiter, {"population_size": 56}),
+        SolverFactory(TSPGSAExploiter, {"population_size": 48, "G0": 100.0}),
+        SolverFactory(TSPHillClimbingExploiter, {"population_size": 32, "local_search_iter": 50}),
+        SolverFactory(TSPMemeticExploiter, {"population_size": 40, "mutation_rate": 0.1, "local_search_iter": 20}),
+        SolverFactory(TSPLSHADEExploiter, {"population_size": 64, "H": 5}),
     ]
 
     register_problem(
@@ -251,8 +279,10 @@ def _register_builtin_definitions():
                 "exploitation": tsp_exploiters,
             },
             metadata={
-                "description": "TSP with randomized explorer/exploiter solver catalog.",
-                "observation_features": 6,
+                "description": "TSP with full 11x13 properly-tuned explorer/exploiter pool.",
+                "explorer_count": 11,
+                "exploiter_count": 13,
+                "total_pairings": 11 * 13,  # 143 unique solver combinations
             },
         )
     )
