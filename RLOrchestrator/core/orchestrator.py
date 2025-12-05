@@ -80,6 +80,7 @@ class OrchestratorEnv(gym.Env):
         self._context = context
         self._controller = StageController(context)
         self.reward_computer = RewardWrapper()
+        self.reward_clip = reward_clip
 
         if emit_init_summary:
             self._log_init_summary(max_decision_steps, search_steps_per_decision, max_search_steps, reward_clip)
