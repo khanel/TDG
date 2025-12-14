@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional, Iterable
 
 import numpy as np
 
-from TSP.TSP import TSPProblem, Graph
+from problems.TSP.TSP import TSPProblem, Graph
 from Core.problem import Solution, ProblemInterface
 
 

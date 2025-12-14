@@ -5,7 +5,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
-from Knapsack.knapsack import KnapsackProblem
+from problems.Knapsack.knapsack import KnapsackProblem
 from Core.problem import Solution, ProblemInterface
 
 

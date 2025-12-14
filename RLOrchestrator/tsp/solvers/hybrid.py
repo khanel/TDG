@@ -8,14 +8,14 @@ from typing import Iterable, List, Tuple
 
 import numpy as np
 
-from ABC import ArtificialBeeColony
-from GSA.gsa import GravitationalSearchAlgorithm
-from HHO.hho import HarrisHawksOptimization
-from LSHADE.lshade import LSHADE
-from MA.memetic import MemeticAlgorithm
-from MPA.mpa import MarinePredatorsAlgorithm
-from SMA.sma import SlimeMouldAlgorithm
-from WOA.woa import WhaleOptimizationAlgorithm
+from algorithms.ABC import ArtificialBeeColony
+from algorithms.GSA import GravitationalSearchAlgorithm
+from algorithms.HHO import HarrisHawksOptimization
+from algorithms.LSHADE import LSHADE
+from algorithms.MA import MemeticAlgorithm
+from algorithms.MPA import MarinePredatorsAlgorithm
+from algorithms.SMA import SlimeMouldAlgorithm
+from algorithms.WOA import WhaleOptimizationAlgorithm
 from Core.problem import Solution
 
 

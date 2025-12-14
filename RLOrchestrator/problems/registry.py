@@ -268,6 +268,9 @@ def _register_builtin_definitions():
         NKLABCExploiter,
     )
 
+    from ..sbst.adapter import SBSTAdapter
+    from ..sbst.solvers import SBSTRandomExplorer, SBSTRandomExploiter
+
     # TSP: Full 11x13 explorer/exploiter pool for solver-agnostic training
     tsp_explorers = [
         SolverFactory(TSPMapElitesExplorer, {"population_size": 64, "n_bins": 10, "mutation_rate": 0.3}),
@@ -470,6 +473,33 @@ def _register_builtin_definitions():
                 "explorer_count": 11,
                 "exploiter_count": 13,
                 "total_pairings": 11 * 13,  # 143 unique solver combinations
+            },
+        )
+    )
+
+    # SBST TDG: placeholder adapter + stub solvers so the problem is visible in the registry.
+    # Real TDG evaluation (JUnit + JaCoCo) will replace the adapter's surrogate fitness.
+    sbst_explorers = [
+        SolverFactory(SBSTRandomExplorer, {"population_size": 48, "mutation_rate": 0.35}),
+    ]
+    sbst_exploiters = [
+        SolverFactory(SBSTRandomExploiter, {"population_size": 32, "mutation_rate": 0.10}),
+    ]
+
+    register_problem(
+        ProblemDefinition(
+            name="sbst",
+            adapter_cls=SBSTAdapter,
+            default_adapter_kwargs={"dimension": 24},
+            solvers={
+                "exploration": sbst_explorers,
+                "exploitation": sbst_exploiters,
+            },
+            metadata={
+                "description": "SBST TDG (Java) scaffold — adapter/solvers are placeholders until JaCoCo wiring lands.",
+                "explorer_count": 1,
+                "exploiter_count": 1,
+                "total_pairings": 1,
             },
         )
     )

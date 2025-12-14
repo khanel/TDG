@@ -15,7 +15,7 @@ from Core.problem import ProblemInterface, Solution
 
 
 def _load_maxcut_module():
-    path = Path(__file__).resolve().parents[2] / "MaxCut" / "maxcut.py"
+    path = Path(__file__).resolve().parents[2] / "problems" / "MaxCut" / "maxcut.py"
     if not path.exists():
         raise FileNotFoundError(f"MaxCut definition not found at {path}")
     module_name = "RLOrchestrator._maxcut_module"

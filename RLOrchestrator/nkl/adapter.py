@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from Core.problem import ProblemInterface, Solution
-from NKL.nkl import NKLProblem
+from problems.NKL.nkl import NKLProblem
 
 
 class NKLAdapter(ProblemInterface):

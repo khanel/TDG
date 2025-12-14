@@ -6,9 +6,9 @@ This script allows users to select from various hybrid metaheuristic approaches
 for solving the Traveling Salesperson Problem (TSP).
 """
 import argparse
-from TSP.solvers.Hybrid.RoundRobin.round_robin import run_hybrid_round_robin
-from TSP.solvers.Hybrid.Parallel.parallel import run_hybrid_parallel
-from TSP.solvers.Hybrid.Phased.phased_solver import run_hybrid_phased
+from problems.TSP.solvers.Hybrid.RoundRobin.round_robin import run_hybrid_round_robin
+from problems.TSP.solvers.Hybrid.Parallel.parallel import run_hybrid_parallel
+from problems.TSP.solvers.Hybrid.Phased.phased_solver import run_hybrid_phased
 
 def main():
     """Parse command line arguments and run the selected hybrid approach."""
