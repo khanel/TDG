@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseLogic.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">sbst-demo-java-maven</a> &gt; <a href="index.source.html" class="el_package">com.example.sbstdemo</a> &gt; <span class="el_source">BaseLogic.java</span></div><h1>BaseLogic.java</h1><pre class="source lang-java linenums">package com.example.sbstdemo;
+
+<span class="fc" id="L3">public class BaseLogic {</span>
+
+    protected int core(int x) {
+<span class="fc bfc" id="L6" title="All 2 branches covered.">        if (x &lt; 0) {</span>
+<span class="fc" id="L7">            return -1;</span>
+<span class="fc bfc" id="L8" title="All 2 branches covered.">        } else if (x == 0) {</span>
+<span class="fc" id="L9">            return 0;</span>
+        } else {
+<span class="fc" id="L11">            return 1;</span>
+        }
+    }
+
+    public int baseCore(int x) {
+<span class="nc" id="L16">        return core(x);</span>
+    }
+
+    public int baseCompare(int a, int b) {
+<span class="nc bnc" id="L20" title="All 2 branches missed.">        if (a &lt; b) {</span>
+<span class="nc" id="L21">            return 1;</span>
+        }
+<span class="nc bnc" id="L23" title="All 2 branches missed.">        if (a == b) {</span>
+<span class="nc" id="L24">            return 2;</span>
+        }
+<span class="nc" id="L26">        return 3;</span>
+    }
+
+    public boolean baseStringFlag(String s) {
+<span class="nc bnc" id="L30" title="All 2 branches missed.">        if (s == null) {</span>
+<span class="nc" id="L31">            return false;</span>
+        }
+<span class="nc bnc" id="L33" title="All 2 branches missed.">        if (s.length() == 0) {</span>
+<span class="nc" id="L34">            return false;</span>
+        }
+<span class="nc bnc" id="L36" title="All 2 branches missed.">        return s.charAt(0) == 'a';</span>
+    }
+
+    public int baseNeg() {
+<span class="fc" id="L40">        return core(-7);</span>
+    }
+
+    public int baseZero() {
+<span class="nc" id="L44">        return core(0);</span>
+    }
+
+    public int basePos() {
+<span class="nc" id="L48">        return core(7);</span>
+    }
+
+    public int baseSwitchA() {
+<span class="nc" id="L52">        int v = 1;</span>
+<span class="nc bnc" id="L53" title="All 3 branches missed.">        switch (v) {</span>
+            case 0:
+<span class="nc" id="L55">                return 10;</span>
+            case 1:
+<span class="nc" id="L57">                return 11;</span>
+            default:
+<span class="nc" id="L59">                return 12;</span>
+        }
+    }
+
+    public int baseSwitchB() {
+<span class="nc" id="L64">        int v = 2;</span>
+<span class="nc bnc" id="L65" title="All 3 branches missed.">        switch (v) {</span>
+            case 0:
+<span class="nc" id="L67">                return 20;</span>
+            case 1:
+<span class="nc" id="L69">                return 21;</span>
+            default:
+<span class="nc" id="L71">                return 22;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

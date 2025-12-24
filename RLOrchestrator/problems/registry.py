@@ -477,8 +477,8 @@ def _register_builtin_definitions():
         )
     )
 
-    # SBST TDG: placeholder adapter + stub solvers so the problem is visible in the registry.
-    # Real TDG evaluation (JUnit + JaCoCo) will replace the adapter's surrogate fitness.
+    # SBST TDG: minimal solver pair so SBST can be exercised end-to-end via the registry.
+    # The adapter evaluation is backed by the Java pipeline (JUnit + Maven/Gradle + JaCoCo).
     sbst_explorers = [
         SolverFactory(SBSTRandomExplorer, {"population_size": 48, "mutation_rate": 0.35}),
     ]
@@ -496,7 +496,7 @@ def _register_builtin_definitions():
                 "exploitation": sbst_exploiters,
             },
             metadata={
-                "description": "SBST TDG (Java) scaffold — adapter/solvers are placeholders until JaCoCo wiring lands.",
+                "description": "SBST TDG (Java) — end-to-end JUnit generation + Maven/Gradle execution + JaCoCo branch fitness.",
                 "explorer_count": 1,
                 "exploiter_count": 1,
                 "total_pairings": 1,

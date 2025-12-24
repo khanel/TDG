@@ -1,0 +1,4 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+sbst-demo-java-maven,com.example.sbstdemo,GrandChildLogic,17,9,6,1,8,4,5,2,1,2
+sbst-demo-java-maven,com.example.sbstdemo,ChildLogic,33,15,8,0,12,2,7,2,3,2
+sbst-demo-java-maven,com.example.sbstdemo,BaseLogic,62,17,16,4,23,7,16,5,7,3
