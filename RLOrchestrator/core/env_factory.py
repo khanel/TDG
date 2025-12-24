@@ -3,7 +3,7 @@ Factory function for creating the OrchestratorEnv.
 This centralizes environment creation for consistency in training and evaluation.
 """
 
-from typing import Optional
+from typing import Callable, Optional
 from .orchestrator import OrchestratorEnv
 from Core.problem import ProblemInterface
 from Core.search_algorithm import SearchAlgorithm
@@ -23,6 +23,9 @@ def create_env(
     log_dir: str = 'logs',
     session_id: Optional[int] = None,
     emit_init_summary: bool = True,
+    episode_factory: Optional[
+        Callable[[Optional[int]], tuple[ProblemInterface, SearchAlgorithm, SearchAlgorithm]]
+    ] = None,
 ) -> OrchestratorEnv:
     """
     Factory function to create and configure an OrchestratorEnv instance.
@@ -39,4 +42,5 @@ def create_env(
         log_dir=log_dir,
         session_id=session_id,
         emit_init_summary=emit_init_summary,
+        episode_factory=episode_factory,
     )

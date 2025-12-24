@@ -39,6 +39,15 @@ from ...core.env_factory import create_env
 from ...core.utils import parse_int_range, setup_logging
 from ...problems.registry import instantiate_problem
 from ...rl.callbacks import PeriodicBestCheckpoint
+from ...rl.training.run_artifacts import prepare_run_artifacts
+from ...rl.training.runner import build_vec_env, load_or_create_ppo, choose_vec_env_type
+from ...rl.training.cli_args import (
+    add_budget_args,
+    add_full_ppo_args,
+    add_model_io_args,
+    add_training_core_args,
+    add_vec_env_args,
+)
 
 
 def make_env_fn(
@@ -51,6 +60,7 @@ def make_env_fn(
     reward_clip: float,
     seed: Optional[int],
     session_id: int,
+    log_dir: str,
 ):
     """
     Factory function for creating environments.
@@ -65,19 +75,25 @@ def make_env_fn(
             "k_interactions": k_interactions_range,
             "seed": env_seed,
         }
-        # No solver_kwargs override: let registry randomly pick from full pool
-        bundle = instantiate_problem(
-            "nkl",
-            adapter_kwargs=adapter_kwargs,
-        )
+
+        def episode_factory(reset_seed: int | None):
+            # No solver_kwargs override: let registry randomly pick from full pool
+            episode_seed = env_seed if reset_seed is None else reset_seed
+            bundle = instantiate_problem(
+                "nkl",
+                adapter_kwargs={
+                    **adapter_kwargs,
+                    "seed": episode_seed,
+                },
+            )
+            stage_map = _stage_map(bundle.stages)
+            return bundle.problem, stage_map["exploration"], stage_map["exploitation"]
+
+        # Build the initial bundle once; subsequent resets resample via episode_factory.
+        bundle = instantiate_problem("nkl", adapter_kwargs=adapter_kwargs)
         stage_map = _stage_map(bundle.stages)
         exploration = stage_map["exploration"]
         exploitation = stage_map["exploitation"]
-        
-        # Initialize solvers
-        for solver in stage_map.values():
-            if hasattr(solver, "initialize"):
-                solver.initialize()
         
         env = create_env(
             bundle.problem,
@@ -88,9 +104,10 @@ def make_env_fn(
             max_search_steps=max_search_steps,
             reward_clip=reward_clip,
             log_type='train',
-            log_dir='logs',
+            log_dir=log_dir,
             session_id=session_id,
             emit_init_summary=(rank == 0),
+            episode_factory=episode_factory,
         )
         if env_seed is not None:
             env.reset(seed=env_seed)
@@ -100,66 +117,31 @@ def make_env_fn(
     return _init
 
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="NKL PPO Training with Solver-Agnostic Design (11x13=143 pairings)"
     )
-    
-    # === Training Configuration ===
-    parser.add_argument("--total-timesteps", type=int, default=100000,
-                        help="Total timesteps for training.")
-    parser.add_argument("--num-envs", type=int, default=4,
-                        help="Number of parallel environments.")
-    parser.add_argument("--vec-env", choices=["auto", "dummy", "subproc"], default="auto",
-                        help="Vectorized environment type.")
-    
-    # === PPO Hyperparameters ===
-    parser.add_argument("--ppo-learning-rate", type=float, default=3e-4,
-                        help="PPO learning rate.")
-    parser.add_argument("--ppo-n-steps", type=int, default=2048,
-                        help="Number of steps per environment per update.")
-    parser.add_argument("--ppo-batch-size", type=int, default=64,
-                        help="PPO minibatch size.")
-    parser.add_argument("--ppo-epochs", type=int, default=10,
-                        help="Number of epochs when optimizing surrogate loss.")
-    parser.add_argument("--ppo-ent-coef", type=float, default=0.01,
-                        help="Entropy coefficient for exploration bonus.")
-    parser.add_argument("--ppo-gamma", type=float, default=0.99,
-                        help="Discount factor.")
-    parser.add_argument("--ppo-gae-lambda", type=float, default=0.95,
-                        help="GAE lambda for advantage estimation.")
-    
-    # === Environment Configuration ===
-    parser.add_argument("--max-decisions", type=str, default="200",
-                        help="Max agent decision steps per episode (int or 'min-max').")
-    parser.add_argument("--search-steps-per-decision", type=str, default="10",
-                        help="Solver iterations per agent decision (int or 'min-max').")
-    parser.add_argument("--max-search-steps", type=int, default=None,
-                        help="Optional hard cap on total solver iterations.")
-    parser.add_argument("--reward-clip", type=float, default=1.0,
-                        help="Clip reward magnitude.")
-    
-    # === NKL Problem Parameters ===
-    parser.add_argument("--nkl-n-items", type=str, default="100",
-                        help="NKL N: problem dimension (int or 'min-max' for range).")
-    parser.add_argument("--nkl-k-interactions", type=str, default="5",
-                        help="NKL K: epistatic interactions (int or 'min-max' for range).")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Random seed for reproducibility.")
-    
-    # === Model I/O ===
-    parser.add_argument("--model-output", type=str, default="results/models/ppo_nkl_solveragnostic",
-                        help="Path to save the trained model.")
-    parser.add_argument("--load-model", type=str, default=None,
-                        help="Path to load a checkpoint for continued training.")
-    
-    # === Hardware ===
-    parser.add_argument("--device", type=str, default="auto",
-                        help="Device to use (cpu, cuda, auto).")
-    parser.add_argument("--progress-bar", action="store_true", default=False,
-                        help="Show training progress bar.")
-    
-    args = parser.parse_args()
+
+    g_train = parser.add_argument_group("Training")
+    g_env = parser.add_argument_group("Environment")
+    g_ppo = parser.add_argument_group("PPO")
+    g_io = parser.add_argument_group("Model I/O")
+    g_problem = parser.add_argument_group("Problem")
+
+    add_training_core_args(g_train, total_timesteps_default=100000)
+    add_vec_env_args(g_env, num_envs_default=4, vec_env_default="auto")
+    add_full_ppo_args(g_ppo)
+    add_budget_args(g_env, max_decisions_default="200", search_steps_per_decision_default="10")
+    add_model_io_args(g_io, model_output_default="results/models/ppo_nkl_solveragnostic")
+
+    g_problem.add_argument("--nkl-n-items", type=str, default="100")
+    g_problem.add_argument("--nkl-k-interactions", type=str, default="5")
+    g_problem.add_argument("--seed", type=int, default=42)
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
     
     # Setup threading for performance
     os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -172,7 +154,14 @@ def main():
         torch.backends.cudnn.allow_tf32 = True
     
     session_id = int(time.time())
-    logger = setup_logging('train', 'nkl', session_id=session_id)
+    artifacts = prepare_run_artifacts(
+        mode="train",
+        problem="nkl",
+        model_output=args.model_output,
+        session_id=session_id,
+        args=vars(args),
+    )
+    logger = setup_logging('train', 'nkl', log_dir=str(artifacts.logs_dir), session_id=session_id)
     
     logger.info(f"Starting NKL solver-agnostic training with args: {args}")
 
@@ -192,28 +181,21 @@ def main():
         reward_clip=args.reward_clip,
         seed=args.seed,
         session_id=session_id,
+        log_dir=str(artifacts.logs_dir),
     )
     
     num_envs = max(1, args.num_envs)
     
     if num_envs == 1:
-        # Single environment (no vectorization overhead)
-        env = DummyVecEnv([make_env_fn(rank=0, **env_kwargs)])
+        env_fns = [make_env_fn(rank=0, **env_kwargs)]
     else:
-        vec_type = args.vec_env
-        if vec_type == "auto":
-            vec_type = "subproc" if num_envs > 1 else "dummy"
-        
         env_fns = [make_env_fn(rank=i, **env_kwargs) for i in range(num_envs)]
-        if vec_type == "subproc":
-            env = SubprocVecEnv(env_fns)
-        else:
-            env = DummyVecEnv(env_fns)
+
+    vec_type = choose_vec_env_type(vec_env=args.vec_env, num_envs=num_envs)
+    env = build_vec_env(env_fns, num_envs=num_envs, vec_env_type=vec_type, single_env_mode="dummy")
 
     # Setup output path
-    output_path = Path(args.model_output)
-    if output_path.suffix != ".zip":
-        output_path = output_path.with_suffix(".zip")
+    output_path = artifacts.final_model_path
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Logging: solver-agnostic training emphasizes diverse pairings
@@ -230,34 +212,33 @@ def main():
 
     # Load or create model
     checkpoint_path = Path(args.load_model).expanduser() if args.load_model else None
-    reset_flag = True
-    
-    if checkpoint_path and checkpoint_path.exists():
-        model = PPO.load(checkpoint_path, env=env)
-        reset_flag = False
-        logger.info(f"Loaded checkpoint from {checkpoint_path}")
-    else:
-        model = PPO(
-            "MlpPolicy",
-            env,
-            verbose=0,
-            device=args.device,
-            learning_rate=args.ppo_learning_rate,
-            n_steps=args.ppo_n_steps,
-            batch_size=args.ppo_batch_size,
-            n_epochs=args.ppo_epochs,
-            ent_coef=args.ppo_ent_coef,
-            gamma=args.ppo_gamma,
-            gae_lambda=args.ppo_gae_lambda,
-            policy_kwargs={"net_arch": [64, 64]},
-        )
+    model, reset_flag = load_or_create_ppo(
+        checkpoint_path=checkpoint_path,
+        env=env,
+        create_kwargs={
+            "policy": "MlpPolicy",
+            "verbose": 0,
+            "device": args.device,
+            "learning_rate": args.ppo_learning_rate,
+            "n_steps": args.ppo_n_steps,
+            "batch_size": args.ppo_batch_size,
+            "n_epochs": args.ppo_epochs,
+            "ent_coef": args.ppo_ent_coef,
+            "gamma": args.ppo_gamma,
+            "gae_lambda": args.ppo_gae_lambda,
+            "policy_kwargs": {"net_arch": [64, 64]},
+        },
+    )
+    if reset_flag:
         logger.info(f"Created new PPO model with learning rate: {args.ppo_learning_rate}")
+    else:
+        logger.info(f"Loaded checkpoint from {checkpoint_path}")
 
     # Setup callbacks
     callbacks = [
         PeriodicBestCheckpoint(
             total_timesteps=args.total_timesteps,
-            save_dir=output_path.parent,
+            save_dir=artifacts.checkpoints_dir,
             save_prefix=output_path.stem,
             verbose=0,
             log_episodes=True,

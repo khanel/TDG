@@ -97,6 +97,18 @@ class ObservationComputer:
         self._cached_diversity = None
         self._last_population_hash = None
 
+    def update_problem_meta(self, problem_meta: dict) -> None:
+        """Refresh fitness normalization bounds when the underlying instance changes.
+
+        Many adapters randomize per episode via `regenerate_instance()`, which can
+        change meaningful fitness bounds (e.g., knapsack totals, max-cut weights).
+        This keeps `normalized_best_fitness` stable across domain randomization.
+        """
+        lb, ub = self._extract_bounds(problem_meta)
+        self.fitness_lower_bound = float(lb)
+        self.fitness_upper_bound = float(ub)
+        self.fitness_range = max(1e-9, self.fitness_upper_bound - self.fitness_lower_bound)
+
     def compute(self, state: ObservationState) -> np.ndarray:
         """
         Compute the 6-element observation vector.
@@ -292,7 +304,15 @@ class ObservationComputer:
         
         # Calculate diversity
         try:
-            reps = np.array([np.asarray(sol.representation) for sol in valid_population])
+            def _to_vector(rep):
+                if isinstance(rep, dict) and "genes" in rep:
+                    rep = rep.get("genes")
+                arr = np.asarray(rep, dtype=float)
+                if arr.ndim == 0:
+                    arr = np.asarray([float(arr)], dtype=float)
+                return arr
+
+            reps = np.stack([_to_vector(sol.representation) for sol in valid_population], axis=0)
             if reps.shape[0] < 2:
                 return 0.0
             
@@ -325,7 +345,7 @@ class ObservationComputer:
             
             return diversity
             
-        except (ValueError, ZeroDivisionError, OverflowError):
+        except (ValueError, TypeError, ZeroDivisionError, OverflowError):
             return 0.0
 
     @staticmethod

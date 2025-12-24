@@ -15,30 +15,61 @@ from ...core.env_factory import create_env
 from ...core.utils import parse_int_range, setup_logging
 from ...problems.registry import instantiate_problem
 from ...rl.callbacks import PeriodicBestCheckpoint
+from ...rl.training.run_artifacts import prepare_run_artifacts
+from ...rl.training.runner import build_vec_env, load_or_create_ppo, choose_vec_env_type
+from ...rl.training.cli_args import (
+    add_basic_ppo_args,
+    add_budget_args,
+    add_model_io_args,
+    add_training_core_args,
+    add_vec_env_args,
+)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+
+    g_train = parser.add_argument_group("Training")
+    g_env = parser.add_argument_group("Environment")
+    g_ppo = parser.add_argument_group("PPO")
+    g_io = parser.add_argument_group("Model I/O")
+    g_problem = parser.add_argument_group("Problem")
+
+    add_training_core_args(g_train, total_timesteps_default=100000)
+    g_train.add_argument("--exploration-population", type=int, default=64)
+    g_train.add_argument("--exploitation-population", type=int, default=16)
+
+    add_budget_args(g_env, max_decisions_default="200", search_steps_per_decision_default="1")
+    add_vec_env_args(g_env, num_envs_default=1, vec_env_default="auto")
+
+    add_basic_ppo_args(g_ppo, learning_rate_default=3e-4)
+
+    add_model_io_args(g_io, model_output_default="ppo_maxcut")
+
+    g_problem.add_argument("--n-nodes", type=int, default=64)
+    g_problem.add_argument("--edge-probability", type=float, default=0.5)
+    g_problem.add_argument("--seed", type=int, default=123)
+    g_problem.add_argument("--ensure-connected", action="store_true", default=False)
+    g_problem.add_argument(
+        "--weights-file",
+        type=str,
+        default=None,
+        help="Optional path to weight matrix (.npy/.npz/.txt).",
+    )
+    return parser
 
 def main():
     session_id = int(time.time())
-    logger = setup_logging('train', 'maxcut', session_id=session_id)
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--total-timesteps", type=int, default=100000)
-    parser.add_argument("--exploration-population", type=int, default=64)
-    parser.add_argument("--exploitation-population", type=int, default=16)
-    parser.add_argument("--max-decisions", type=str, default="200")
-    parser.add_argument("--search-steps-per-decision", type=str, default="1")
-    parser.add_argument("--max-search-steps", type=int, default=None)
-    parser.add_argument("--reward-clip", type=float, default=1.0)
-    parser.add_argument("--ppo-learning-rate", type=float, default=3e-4)
-    parser.add_argument("--progress-bar", action="store_true", default=False)
-    parser.add_argument("--num-envs", type=int, default=1)
-    parser.add_argument("--vec-env", choices=["auto", "dummy", "subproc"], default="auto")
-    parser.add_argument("--load-model", type=str, default=None)
-    parser.add_argument("--model-output", type=str, default="ppo_maxcut")
-    parser.add_argument("--n-nodes", type=int, default=64)
-    parser.add_argument("--edge-probability", type=float, default=0.5)
-    parser.add_argument("--seed", type=int, default=123)
-    parser.add_argument("--ensure-connected", action="store_true", default=False)
-    parser.add_argument("--weights-file", type=str, default=None, help="Optional path to weight matrix (.npy/.npz/.txt).")
-    args = parser.parse_args()
+    args = build_parser().parse_args()
+
+    artifacts = prepare_run_artifacts(
+        mode="train",
+        problem="maxcut",
+        model_output=args.model_output,
+        session_id=session_id,
+        args=vars(args),
+    )
+    logger = setup_logging('train', 'maxcut', log_dir=str(artifacts.logs_dir), session_id=session_id)
 
     logger.info(f"Starting MaxCut training with args: {args}")
 
@@ -106,7 +137,7 @@ def main():
                 max_search_steps=args.max_search_steps,
                 reward_clip=args.reward_clip,
                 log_type='train',
-                log_dir='logs',
+                log_dir=str(artifacts.logs_dir),
                 session_id=session_id,
                 emit_init_summary=(rank == 0),
             )
@@ -118,21 +149,11 @@ def main():
         return _init
 
     num_envs = max(1, int(args.num_envs))
-    if num_envs == 1:
-        env = make_env_fn(0)()
-    else:
-        vec_type = args.vec_env
-        if vec_type == "auto":
-            vec_type = "subproc"
-        env_fns = [make_env_fn(rank) for rank in range(num_envs)]
-        if vec_type == "subproc":
-            env = SubprocVecEnv(env_fns)
-        else:
-            env = DummyVecEnv(env_fns)
+    env_fns = [make_env_fn(rank) for rank in range(num_envs)]
+    vec_type = choose_vec_env_type(vec_env=args.vec_env, num_envs=num_envs)
+    env = build_vec_env(env_fns, num_envs=num_envs, vec_env_type=vec_type, single_env_mode="raw")
 
-    output_path = Path(args.model_output)
-    if output_path.suffix != ".zip":
-        output_path = output_path.with_suffix(".zip")
+    output_path = artifacts.final_model_path
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # High-level start header (single line)
@@ -145,19 +166,23 @@ def main():
     )
 
     checkpoint_path = Path(args.load_model).expanduser() if args.load_model else None
-    if checkpoint_path and checkpoint_path.exists():
-        model = PPO.load(checkpoint_path, env=env)
-        reset_flag = False
-    else:
-        model = PPO("MlpPolicy", env, verbose=0, learning_rate=args.ppo_learning_rate)
+    model, reset_flag = load_or_create_ppo(
+        checkpoint_path=checkpoint_path,
+        env=env,
+        create_kwargs={
+            "policy": "MlpPolicy",
+            "learning_rate": args.ppo_learning_rate,
+            "verbose": 0,
+        },
+    )
+    if reset_flag:
         logger.info(f"Created new PPO model with learning rate: {args.ppo_learning_rate}")
-        reset_flag = True
 
     callbacks = []
     callbacks.append(
         PeriodicBestCheckpoint(
             total_timesteps=args.total_timesteps,
-            save_dir=output_path.parent,
+            save_dir=artifacts.checkpoints_dir,
             save_prefix=output_path.stem,
             verbose=0,
             log_episodes=True,

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
+from typing import Callable, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -45,6 +45,9 @@ class OrchestratorEnv(gym.Env):
         log_dir: str = 'logs',
         session_id: Optional[int] = None,
         emit_init_summary: bool = True,
+        episode_factory: Optional[
+            Callable[[Optional[int]], tuple[ProblemInterface, SearchAlgorithm, SearchAlgorithm]]
+        ] = None,
     ):
         super().__init__()
         self.problem = problem
@@ -63,11 +66,15 @@ class OrchestratorEnv(gym.Env):
         obs_space_size = len(self.obs_comp.feature_names)
         self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(obs_space_size,), dtype=np.float32)
 
-        budget = BudgetSpec(
+        self._episode_factory = episode_factory
+
+        # Keep budget specs so we can rebuild the controller if we swap problems per episode.
+        self._budget_spec = BudgetSpec(
             max_decision_steps=max_decision_steps,
             search_steps_per_decision=search_steps_per_decision,
             max_search_steps=max_search_steps,
         )
+        budget = self._budget_spec
         context = OrchestratorContext(
             problem=problem,
             stages=[
@@ -88,14 +95,47 @@ class OrchestratorEnv(gym.Env):
     # Gym API ---------------------------------------------------------------
 
     def reset(self, *, seed=None, options=None):
+        # Optional: allow per-episode swapping of (problem, solvers). This is critical
+        # for true multi-problem + solver-resampling training without spawning new envs.
+        if self._episode_factory is not None:
+            p, exp, imp = self._episode_factory(seed)
+            self._swap_bundle(problem=p, exploration=exp, exploitation=imp)
+
         self._controller.reset(seed=seed)
         if hasattr(self.obs_comp, "reset"):
             self.obs_comp.reset()
+
+        # Domain randomization can change bounds; refresh normalization each episode.
+        if hasattr(self.obs_comp, "update_problem_meta"):
+            self.obs_comp.update_problem_meta(self._get_problem_meta())
 
         obs = self._observe()
         self._last_observation = obs.copy()
         return obs, {}
 
+    def _swap_bundle(
+        self,
+        *,
+        problem: ProblemInterface,
+        exploration: SearchAlgorithm,
+        exploitation: SearchAlgorithm,
+    ) -> None:
+        """Swap the active problem + solvers while keeping the Gym interface stable."""
+        self.problem = problem
+        self.exploration_solver = exploration
+        self.exploitation_solver = exploitation
+
+        context = OrchestratorContext(
+            problem=problem,
+            stages=[
+                StageBinding(name="exploration", solver=exploration),
+                StageBinding(name="exploitation", solver=exploitation),
+                StageBinding(name="termination", solver=None),
+            ],
+            budget=self._budget_spec,
+        )
+        self._context = context
+        self._controller = StageController(context)
     def step(self, action: int):
         prev_observation = self._last_observation
         result = self._controller.step(action)
