@@ -19,3 +19,6 @@ venv/
 # --- Local run artifacts (do not commit) ---
 logs/
 runs/
+
+# --- Java / Maven build outputs (examples) ---
+examples/**/target/
