@@ -31,6 +31,40 @@ from Core.search_algorithm import SearchAlgorithm
 
 class PermutationMixin:
     """Provides permutation operations for TSP solvers."""
+
+    def _repair_permutation(self, tour: np.ndarray) -> np.ndarray:
+        """Repair an arbitrary vector into a valid permutation of 0..n-1.
+
+        Some solver initializations may produce duplicates or out-of-range values.
+        MAP-Elites behavior descriptors and archive indexing assume a proper
+        permutation tour.
+        """
+        arr = np.asarray(tour)
+        n = int(arr.shape[0])
+        if n <= 0:
+            return arr.astype(int)
+
+        # Fast path: already a permutation.
+        if arr.dtype.kind in {"i", "u"}:
+            vals = arr.astype(int, copy=False)
+            if vals.min(initial=0) >= 0 and vals.max(initial=-1) < n and len(set(vals.tolist())) == n:
+                return vals
+
+        vals = np.asarray(np.rint(arr), dtype=int)
+        used: set[int] = set()
+        repaired = np.full(n, -1, dtype=int)
+        for idx, v in enumerate(vals.tolist()):
+            if 0 <= v < n and v not in used:
+                repaired[idx] = v
+                used.add(v)
+
+        missing = [i for i in range(n) if i not in used]
+        miss_idx = 0
+        for idx in range(n):
+            if repaired[idx] == -1:
+                repaired[idx] = missing[miss_idx]
+                miss_idx += 1
+        return repaired
     
     def _order_crossover(self, parent1: np.ndarray, parent2: np.ndarray) -> np.ndarray:
         """Order Crossover (OX) for permutations."""
@@ -135,6 +169,7 @@ class TSPMapElitesExplorer(SearchAlgorithm, PermutationMixin):
 
     def _compute_behavior_descriptor(self, tour: np.ndarray) -> np.ndarray:
         """Compute 2D behavior descriptor for tour."""
+        tour = self._repair_permutation(tour)
         n = len(tour)
         mid = n // 2
         # BD1: average position of first half cities in tour
@@ -152,6 +187,7 @@ class TSPMapElitesExplorer(SearchAlgorithm, PermutationMixin):
 
     def _add_to_archive(self, tour: np.ndarray, fitness: float) -> bool:
         """Add tour to archive if it improves the cell."""
+        tour = self._repair_permutation(tour)
         bd = self._compute_behavior_descriptor(tour)
         key = self._bd_to_key(bd)
         current = self.archive.get(key)
@@ -200,6 +236,7 @@ class TSPMapElitesExplorer(SearchAlgorithm, PermutationMixin):
 
         # Evaluate and add to archive
         for tour in new_tours:
+            tour = self._repair_permutation(tour)
             sol = Solution(tour.tolist(), self.problem)
             sol.evaluate()
             self._add_to_archive(tour, sol.fitness)
