@@ -1,1 +1,21 @@
-*__pycache__*
+# --- Python bytecode / caches ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Test / tooling ---
+.pytest_cache/
+
+# --- Editors / IDEs ---
+.vscode/
+.idea/
+.kilocode/
+.windsurf/
+
+# --- Local environments ---
+.venv/
+venv/
+
+# --- Local run artifacts (do not commit) ---
+logs/
+runs/
