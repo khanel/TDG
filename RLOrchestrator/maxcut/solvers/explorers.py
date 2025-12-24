@@ -13,6 +13,7 @@ Binary domain with graph-cut structure.
 
 from __future__ import annotations
 
+import math
 from typing import List, Optional
 
 import numpy as np
@@ -657,9 +658,9 @@ class MaxCutMPAExplorer(MaxCutBinaryMixin, SearchAlgorithm):
         """Generate Levy flight step."""
         beta = 1.5
         sigma = (
-            np.math.gamma(1 + beta)
-            * np.sin(np.pi * beta / 2)
-            / (np.math.gamma((1 + beta) / 2) * beta * 2 ** ((beta - 1) / 2))
+            math.gamma(1 + beta)
+            * math.sin(math.pi * beta / 2)
+            / (math.gamma((1 + beta) / 2) * beta * 2 ** ((beta - 1) / 2))
         ) ** (1 / beta)
         u = self.rng.normal(0, sigma, dim)
         v = self.rng.normal(0, 1, dim)
@@ -746,7 +747,10 @@ class MaxCutSMAExplorer(MaxCutBinaryMixin, SearchAlgorithm):
         dim = len(self.population[0].representation)
 
         progress = min(self.iteration / self.max_iterations, 1.0)
-        a = np.arctanh(1 - progress)  # Decreases over time
+        eps = 1e-12
+        x = 1.0 - float(progress)
+        x = max(-1.0 + eps, min(1.0 - eps, x))
+        a = np.arctanh(x)  # Decreases over time
         b = 1 - progress
 
         best = min(self.population, key=lambda s: s.fitness if s.fitness is not None else float("inf"))
@@ -757,12 +761,17 @@ class MaxCutSMAExplorer(MaxCutBinaryMixin, SearchAlgorithm):
             self.population,
             key=lambda s: s.fitness if s.fitness is not None else float("inf"),
         )
+        best_fit = float(best.fitness) if best.fitness is not None else 0.0
         weights = np.zeros(self.population_size)
         for i, sol in enumerate(sorted_pop):
+            sol_fit = float(sol.fitness) if sol.fitness is not None else best_fit
+            ratio = (best_fit + eps) / (sol_fit + eps) + 1.0
+            ratio = max(ratio, eps)
+            log_term = math.log10(ratio)
             if i < self.population_size // 2:
-                weights[i] = 1 + self.rng.random() * np.log10((best.fitness + 1e-10) / (sol.fitness + 1e-10) + 1)
+                weights[i] = 1 + self.rng.random() * log_term
             else:
-                weights[i] = 1 - self.rng.random() * np.log10((best.fitness + 1e-10) / (sol.fitness + 1e-10) + 1)
+                weights[i] = 1 - self.rng.random() * log_term
 
         new_population: List[Solution] = []
         for i, sol in enumerate(self.population):
@@ -772,7 +781,8 @@ class MaxCutSMAExplorer(MaxCutBinaryMixin, SearchAlgorithm):
                 # Random exploration
                 new_pos = self.rng.random(dim)
             else:
-                p = np.tanh(np.abs(sol.fitness - best.fitness) + 1e-10) if sol.fitness is not None else 0.5
+                sol_fit = float(sol.fitness) if sol.fitness is not None else best_fit
+                p = np.tanh(np.abs(sol_fit - best_fit) + eps)
                 vb = 2 * a * self.rng.random(dim) - a
                 vc = 2 * b * self.rng.random(dim) - b
 
