@@ -118,3 +118,65 @@ def test_training_cli_group_titles_are_consistent(module_path: str):
     assert "Environment" in titles
     assert "PPO" in titles
     assert "Model I/O" in titles
+
+
+@pytest.mark.parametrize(
+    "module_path",
+    [
+        "RLOrchestrator.knapsack.rl.train",
+        "RLOrchestrator.maxcut.rl.train",
+        "RLOrchestrator.tsp.rl.train",
+        "RLOrchestrator.nkl.rl.train",
+        "RLOrchestrator.rl.train_generalized",
+    ],
+)
+def test_training_parsers_expose_perf_options(module_path: str):
+    mod = __import__(module_path, fromlist=["build_parser"])
+    parser = mod.build_parser()
+
+    # Threading controls (avoid CPU oversubscription with many env processes)
+    _assert_has_option(parser, "--blas-threads")
+    _assert_has_option(parser, "--torch-threads")
+    _assert_has_option(parser, "--torch-interop-threads")
+    _assert_has_option(parser, "--subproc-start-method")
+
+    _assert_default(parser, "--blas-threads", 1)
+    _assert_default(parser, "--torch-threads", 1)
+    _assert_default(parser, "--torch-interop-threads", 1)
+    _assert_default(parser, "--subproc-start-method", None)
+
+
+@pytest.mark.parametrize(
+    "module_path",
+    [
+        "RLOrchestrator.knapsack.rl.train",
+        "RLOrchestrator.maxcut.rl.train",
+        "RLOrchestrator.tsp.rl.train",
+        "RLOrchestrator.nkl.rl.train",
+        "RLOrchestrator.rl.train_generalized",
+    ],
+)
+def test_training_parsers_expose_fast_preset_option(module_path: str):
+    mod = __import__(module_path, fromlist=["build_parser"])
+    parser = mod.build_parser()
+
+    _assert_has_option(parser, "--fast")
+    _assert_default(parser, "--fast", False)
+
+
+@pytest.mark.parametrize(
+    "module_path",
+    [
+        "RLOrchestrator.knapsack.rl.train",
+        "RLOrchestrator.maxcut.rl.train",
+        "RLOrchestrator.tsp.rl.train",
+        "RLOrchestrator.nkl.rl.train",
+        "RLOrchestrator.rl.train_generalized",
+    ],
+)
+def test_training_parsers_expose_budget_ratio_option(module_path: str):
+    mod = __import__(module_path, fromlist=["build_parser"])
+    parser = mod.build_parser()
+
+    _assert_has_option(parser, "--budget-ratio")
+    _assert_default(parser, "--budget-ratio", None)

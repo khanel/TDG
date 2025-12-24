@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Callable, Literal, Mapping, Optional, Sequence, Tuple
 
@@ -36,7 +37,10 @@ def build_vec_env(
 
     vec_type = choose_vec_env_type(vec_env=str(vec_env_type), num_envs=n)
     if vec_type == "subproc":
-        return SubprocVecEnv(list(env_fns))
+        # On newer Python versions, 'fork'/'forkserver' can be less stable with
+        # heavy numeric stacks; allow overriding via env var.
+        start_method = os.environ.get("SB3_SUBPROC_START_METHOD", "spawn")
+        return SubprocVecEnv(list(env_fns), start_method=start_method)
     return DummyVecEnv(list(env_fns))
 
 

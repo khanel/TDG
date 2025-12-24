@@ -26,6 +26,12 @@ def add_budget_args(
         type=str,
         default=str(search_steps_per_decision_default),
     )
+    parser.add_argument(
+        "--budget-ratio",
+        type=str,
+        default=None,
+        help="Two-sided budget multiplier range, e.g. '0.5-2.0' (applies to both max-decisions and search-steps-per-decision).",
+    )
     parser.add_argument("--max-search-steps", type=int, default=None)
     parser.add_argument("--reward-clip", type=float, default=1.0)
     return parser
@@ -85,4 +91,24 @@ def add_full_ppo_args(
     parser.add_argument("--ppo-gamma", type=float, default=float(gamma_default))
     parser.add_argument("--ppo-gae-lambda", type=float, default=float(gae_lambda_default))
     parser.add_argument("--device", type=str, default=str(device_default))
+    return parser
+
+
+def add_performance_args(parser: Any) -> argparse.ArgumentParser:
+    """Performance controls.
+
+    These flags exist mainly to avoid CPU oversubscription when using multiple
+    environments (especially with SubprocVecEnv).
+    """
+
+    parser.add_argument("--fast", action="store_true", default=False)
+    parser.add_argument("--blas-threads", type=int, default=1)
+    parser.add_argument("--torch-threads", type=int, default=1)
+    parser.add_argument("--torch-interop-threads", type=int, default=1)
+    parser.add_argument(
+        "--subproc-start-method",
+        type=str,
+        default=None,
+        choices=["spawn", "forkserver", "fork"],
+    )
     return parser

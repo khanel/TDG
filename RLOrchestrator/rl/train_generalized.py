@@ -34,9 +34,11 @@ from RLOrchestrator.rl.training.cli_args import (
     add_budget_args,
     add_full_ppo_args,
     add_model_io_args,
+    add_performance_args,
     add_training_core_args,
     add_vec_env_args,
 )
+from RLOrchestrator.rl.training.perf import apply_budget_ratio, apply_fast_preset, apply_performance_settings
 
 
 def make_env_fn(
@@ -99,8 +101,10 @@ def build_parser() -> argparse.ArgumentParser:
     g_problem = parser.add_argument_group("Problem")
     g_ppo = parser.add_argument_group("PPO")
     g_io = parser.add_argument_group("Model I/O")
+    g_perf = parser.add_argument_group("Performance")
 
     add_training_core_args(g_train, total_timesteps_default=250000)
+    add_performance_args(g_perf)
     add_vec_env_args(g_env, num_envs_default=4, vec_env_default="auto")
     add_budget_args(g_env, max_decisions_default="200", search_steps_per_decision_default="10")
 
@@ -119,11 +123,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main():
     args = build_parser().parse_args()
-    
-    # Setup threading for performance
-    os.environ.setdefault("OMP_NUM_THREADS", "1")
-    os.environ.setdefault("MKL_NUM_THREADS", "1")
-    torch.set_num_threads(1)
+
+    apply_fast_preset(
+        args,
+        num_envs_default=4,
+        max_decisions_default="200",
+        search_steps_per_decision_default="10",
+        max_decisions_fast="100",
+        search_steps_per_decision_fast="5",
+    )
+
+    apply_budget_ratio(args)
+
+    apply_performance_settings(args)
     
     if torch.cuda.is_available():
         torch.backends.cuda.matmul.allow_tf32 = True
